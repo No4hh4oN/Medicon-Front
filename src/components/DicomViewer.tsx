@@ -14,7 +14,7 @@ import {
     Enums as toolsEnums,
     PanTool,
     ZoomTool,
-    StackScrollTool,     // ← 유지
+    StackScrollTool,
     WindowLevelTool,
 } from '@cornerstonejs/tools';
 
@@ -64,11 +64,11 @@ export default function DicomViewer() {
             }
             tg.addTool(PanTool.toolName);
             tg.addTool(ZoomTool.toolName);
-            tg.addTool(StackScrollTool.toolName);  // ← 유지
+            tg.addTool(StackScrollTool.toolName);
             tg.addTool(WindowLevelTool.toolName);
             tg.addViewport(VIEWPORT_ID, RENDERING_ENGINE_ID);
 
-            // 바인딩 (좌: 윈도우레벨 / 우: 줌 / Ctrl+좌: 팬 / (StackScrollTool은 기본 바인딩 유지))
+            // 바인딩 (좌: 윈도우레벨 / 우: 줌 / Ctrl+좌: 팬 / 휠 : 스택)
             tg.setToolActive(WindowLevelTool.toolName, {
                 bindings: [{ mouseButton: toolsEnums.MouseBindings.Primary }],
             });
