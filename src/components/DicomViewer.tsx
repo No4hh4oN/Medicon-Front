@@ -1,4 +1,3 @@
-// src/components/DicomViewer.tsx
 import { useEffect, useRef, useState } from 'react';
 import {
     RenderingEngine,
