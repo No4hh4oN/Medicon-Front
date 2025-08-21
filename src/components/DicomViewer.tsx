@@ -26,7 +26,7 @@ export default function DicomViewer() {
     const engineRef = useRef<RenderingEngine | null>(null);
 
     // 백엔드 시리즈 로딩용 입력값
-    const [apiRoot, setApiRoot] = useState('http://210.94.241.9:5000/api/v1/dicom');
+    const [apiRoot, setApiRoot] = useState('http://localhost:8080/api/v1/dicom');
     const [studyKey, setStudyKey] = useState('21');
     const [seriesKey, setSeriesKey] = useState('1');
 
@@ -35,7 +35,7 @@ export default function DicomViewer() {
         let mounted = true;
         (async () => {
             await coreInit();
-            await dicomImageLoaderInit();
+            await dicomImageLoaderInit({ maxWebWorkers: 2 });
             await toolsInit();
 
             if (!mounted || !containerRef.current) return;
@@ -93,7 +93,7 @@ export default function DicomViewer() {
             } catch {}
         };
     }, []);
-
+/*
     // 2) 백엔드에서 시리즈 전체 로딩 → wadouri imageIds로 스택 세팅
     const loadSeries = async () => {
         if (!engineRef.current) return;
@@ -132,6 +132,22 @@ export default function DicomViewer() {
         const vp = re.getViewport(VIEWPORT_ID) as Types.IStackViewport;
         await vp.setStack(imageIds, 0);
         vp.render();
+    };*/
+
+    // 2) 단일 이미지 로딩 → wadouri imageId 세팅
+    const loadOneImage = async () => {
+    if (!engineRef.current) return;
+
+    // 특정 이미지 하나만 URL 지정
+    const imageId = `wadouri:${apiRoot}/studies/${encodeURIComponent(studyKey)}` +
+                    `/series/${encodeURIComponent(seriesKey)}/images/2`;
+
+    const re = engineRef.current;
+    const vp = re.getViewport(VIEWPORT_ID) as Types.IStackViewport;
+
+    // 배열에 한 장만 넣어서 스택 세팅
+    await vp.setStack([imageId], 0);
+    vp.render();
     };
 
     return (
@@ -156,7 +172,7 @@ export default function DicomViewer() {
                     onChange={(e) => setSeriesKey(e.target.value)}
                     placeholder="seriesKey"
                 />
-                <button onClick={loadSeries}>시리즈 불러오기</button>
+                <button onClick={loadOneImage}>불러오기</button>
                 <span style={{ opacity: 0.7 }}>좌 : 윈도우레벨 / ctrl+좌 : 팬 / 우: 줌 / 휠 : 스택 스크롤
         </span>
             </div>
