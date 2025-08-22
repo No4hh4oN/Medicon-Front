@@ -82,7 +82,9 @@ export default function DicomViewer() {
             });
 
             // StackScrollTool 은 기본 동작(드래그 기반)을 사용
-            tg.setToolActive(StackScrollTool.toolName);
+            tg.setToolActive(StackScrollTool.toolName, {
+                bindings: [{ mouseButton: toolsEnums.MouseBindings.Wheel }],
+            });
         })();
 
         return () => {
@@ -90,10 +92,12 @@ export default function DicomViewer() {
             try {
                 engineRef.current?.destroy();
                 engineRef.current = null;
-            } catch {}
+            } catch (err) {
+                console.warn('렌더링 엔진 정리 중 오류 발생:', err);
+            }
         };
     }, []);
-/*
+
     // 2) 백엔드에서 시리즈 전체 로딩 → wadouri imageIds로 스택 세팅
     const loadSeries = async () => {
         if (!engineRef.current) return;
@@ -132,8 +136,8 @@ export default function DicomViewer() {
         const vp = re.getViewport(VIEWPORT_ID) as Types.IStackViewport;
         await vp.setStack(imageIds, 0);
         vp.render();
-    };*/
-
+    };
+/*
     // 2) 단일 이미지 로딩 → wadouri imageId 세팅
     const loadOneImage = async () => {
     if (!engineRef.current) return;
@@ -149,6 +153,7 @@ export default function DicomViewer() {
     await vp.setStack([imageId], 0);
     vp.render();
     };
+    */
 
     return (
         <div style={{ display: 'grid', gridTemplateRows: 'auto 1fr', height: '100%' }}>
@@ -172,7 +177,7 @@ export default function DicomViewer() {
                     onChange={(e) => setSeriesKey(e.target.value)}
                     placeholder="seriesKey"
                 />
-                <button onClick={loadOneImage}>불러오기</button>
+                <button onClick={loadSeries}>불러오기</button>
                 <span style={{ opacity: 0.7 }}>좌 : 윈도우레벨 / ctrl+좌 : 팬 / 우: 줌 / 휠 : 스택 스크롤
         </span>
             </div>
