@@ -27,14 +27,14 @@ export type ResultRow = {
   desc: string | null;
   /** 검사일시 (표시용 문자열) */
   when: string;
-  /** 판독상태 */
-  status: "대기" | "진행" | "완료";
-  /** 시리즈 수 */
-  series: number;
-  /** 이미지 수 */
-  images: number;
-  /** Verify 여부 */
-  verify: boolean;
+  /** 성별 (pSex) */
+  status: string;
+  /** 시리즈 수 (bodyPart) */
+  series: string | null;
+  /** 이미지 수 (patAge) */
+  images: string | null;
+  /** Verify (studyKey) */
+  verify: number;
 };
 
 export interface PacsPlusSearchMinimalProps {
@@ -67,6 +67,20 @@ interface ApiPatientResponse {
   psex: string;
 }
 
+// '검사장비' 검색 시 받는 평탄화된 API 응답 데이터 구조
+interface ApiModalityResponse {
+  pid: string;
+  pname: string;
+  psex: string;
+  pbirthdate: string | null;
+  studyKey: number;
+  studyDate: string;
+  studyTime: string;
+  studyDesc: string | null;
+  modality: string;
+  bodyPart: string | null;
+  patAge: string | null;
+}
 
 /** 검색바(환자 아이디/이름) + 결과 테이블(헤더/본체)만 구현한 미니 컴포넌트 */
 const PacsPlusSearchMinimal: React.FC<PacsPlusSearchMinimalProps> = ({
@@ -104,35 +118,63 @@ const PacsPlusSearchMinimal: React.FC<PacsPlusSearchMinimalProps> = ({
       if (!response.ok) {
         throw new Error(`API 요청 실패: ${response.statusText}`);
       }
-      const apiData: ApiPatientResponse[] = await response.json();
 
-      // API 응답(중첩 구조)을 테이블에 맞는 평평한 데이터로 변환합니다.
-      const newRows: ResultRow[] = apiData.flatMap(patient =>
-        patient.studyListDto.map(study => {
-          const { studyDate, studyTime } = study;
-          const year = studyDate.substring(0, 4);
-          const month = studyDate.substring(4, 6);
-          const day = studyDate.substring(6, 8);
-          const hours = studyTime.substring(0, 2);
-          const minutes = studyTime.substring(2, 4);
-          const seconds = studyTime.substring(4, 6);
-          const formattedWhen = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+      let newRows: ResultRow[] = [];
 
-          return {
-            pid: patient.pid,
-            pname: patient.pname,
-            modality: study.modality,
-            desc: study.studyDesc,
-            when: formattedWhen,
-            // --- 아래는 API에 없는 데이터이므로 임시 값을 사용합니다 ---
-            status: '완료',
-            series: 1, // API 응답에 시리즈 수가 없으므로 임시값
-            images: 1, // API 응답에 이미지 수가 없으므로 임시값
-            verify: false, // API 응답에 verify 여부가 없으므로 임시값
-          };
-        })
-      );
-      setRows(newRows ?? []);
+      if (searchType === 'modality') {
+        // '검사장비' 검색 시 평탄화된 응답 처리
+        const apiData: ApiModalityResponse[] = await response.json();
+        newRows = apiData.map(study => {
+            const { studyDate, studyTime } = study;
+            const year = studyDate.substring(0, 4);
+            const month = studyDate.substring(4, 6);
+            const day = studyDate.substring(6, 8);
+            const hours = studyTime.substring(0, 2);
+            const minutes = studyTime.substring(2, 4);
+            const seconds = studyTime.substring(4, 6);
+            const formattedWhen = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+
+            return {
+                pid: study.pid,
+                pname: study.pname,
+                modality: study.modality,
+                desc: study.studyDesc,
+                when: formattedWhen,
+                status: study.psex,
+                series: study.bodyPart,
+                images: study.patAge,
+                verify: study.studyKey,
+            };
+        });
+      } else {
+        // '환자 아이디' 또는 '환자 이름' 검색 시 기존 중첩 응답 처리
+        const apiData: ApiPatientResponse[] = await response.json();
+        newRows = apiData.flatMap(patient =>
+          patient.studyListDto.map(study => {
+            const { studyDate, studyTime } = study;
+            const year = studyDate.substring(0, 4);
+            const month = studyDate.substring(4, 6);
+            const day = studyDate.substring(6, 8);
+            const hours = studyTime.substring(0, 2);
+            const minutes = studyTime.substring(2, 4);
+            const seconds = studyTime.substring(4, 6);
+            const formattedWhen = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+
+            return {
+              pid: patient.pid,
+              pname: patient.pname,
+              modality: study.modality,
+              desc: study.studyDesc,
+              when: formattedWhen,
+              status: patient.psex,
+              series: study.bodyPart,
+              images: study.patAge,
+              verify: study.studyKey,
+            };
+          })
+        );
+      }
+      setRows(newRows);
     } catch (e) {
       console.error("[PacsPlusSearchMinimal] API 요청 오류:", e);
       setRows([]);
@@ -190,10 +232,10 @@ const PacsPlusSearchMinimal: React.FC<PacsPlusSearchMinimalProps> = ({
                   <TableHead>검사장비</TableHead>
                   <TableHead>검사설명</TableHead>
                   <TableHead>검사일시</TableHead>
-                  <TableHead>판독상태</TableHead>
-                  <TableHead className="text-right">시리즈</TableHead>
-                  <TableHead className="text-right">이미지</TableHead>
-                  <TableHead className="text-center">Verify</TableHead>
+                  <TableHead>성별</TableHead>
+                  <TableHead className="text-right">검사부위</TableHead>
+                  <TableHead className="text-right">환자 나이</TableHead>
+                  <TableHead className="text-center">검사 번호</TableHead>
                 </TableRow>
               </TableHeader>
 
@@ -216,18 +258,10 @@ const PacsPlusSearchMinimal: React.FC<PacsPlusSearchMinimalProps> = ({
                       </TableCell>
                       <TableCell className="text-neutral-300">{r.desc ?? "-"}</TableCell>
                       <TableCell className="text-neutral-400">{r.when}</TableCell>
-                      <TableCell>
-                        {r.status === "완료" ? (
-                          <span className="text-emerald-400">완료</span>
-                        ) : r.status === "진행" ? (
-                          <span className="text-sky-400">진행</span>
-                        ) : (
-                          <span className="text-yellow-400">대기</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right">{r.series}</TableCell>
-                      <TableCell className="text-right">{r.images}</TableCell>
-                      <TableCell className="text-center">{r.verify ? "Y" : "N"}</TableCell>
+                      <TableCell>{r.status}</TableCell>
+                      <TableCell className="text-right">{r.series ?? "-"}</TableCell>
+                      <TableCell className="text-right">{r.images ?? "-"}</TableCell>
+                      <TableCell className="text-center">{r.verify}</TableCell>
                     </TableRow>
                   ))
                 ) : (
