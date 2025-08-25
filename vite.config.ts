@@ -9,6 +9,7 @@ export default defineConfig({
         // for dicom-parser
         viteCommonjs(),
     ],
+    assetsInclude: ['**/*.wasm'],
     // seems like only required in dev mode
     optimizeDeps: {
         exclude: ['@cornerstonejs/dicom-image-loader'],
