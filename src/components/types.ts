@@ -13,6 +13,7 @@ export type ResultRow = {
 
 /** 코멘트 행 타입 */
 export type CommentRow = {
+  commentId: number;
   userId: string;
   commentTitle: string;
   commentContent: string;
