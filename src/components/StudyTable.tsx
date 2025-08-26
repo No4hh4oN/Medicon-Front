@@ -7,9 +7,10 @@ interface StudyTableProps {
   rows: ResultRow[];
   isLoading: boolean;
   onRowClick: (studyKey: number) => void;
+  onRowDoubleClick: (studyKey: number) => void;
 }
 
-export const StudyTable: React.FC<StudyTableProps> = ({ rows, isLoading, onRowClick }) => {
+export const StudyTable: React.FC<StudyTableProps> = ({ rows, isLoading, onRowClick, onRowDoubleClick }) => {
   return (
     <div className="relative rounded-xl border border-neutral-800">
       <Table>
@@ -40,6 +41,7 @@ export const StudyTable: React.FC<StudyTableProps> = ({ rows, isLoading, onRowCl
                 key={`${r.pid}-${r.when}-${r.verify}`}
                 className="hover:bg-neutral-900/40 cursor-pointer"
                 onClick={() => onRowClick(r.verify)}
+                onDoubleClick={() => onRowDoubleClick(r.verify)}
               >
                 <TableCell className="font-medium text-center">{r.pid}</TableCell>
                 <TableCell className="text-center">{r.pname}</TableCell>
@@ -68,3 +70,4 @@ export const StudyTable: React.FC<StudyTableProps> = ({ rows, isLoading, onRowCl
     </div>
   );
 };
+
