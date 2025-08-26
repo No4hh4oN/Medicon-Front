@@ -12,7 +12,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { ResultRow, CommentRow } from "./types";
-import { fetchStudies, fetchComments, postComment } from "./api";
+import { fetchStudies, fetchComments, postComment, updateComment, deleteComment } from "./api";
 import { StudyTable } from "./StudyTable";
 import { CommentSection } from "./CommentSection";
 
@@ -106,6 +106,30 @@ const PacsPlusSearchMinimal: React.FC<PacsPlusSearchMinimalProps> = ({
     [selectedStudyKey]
   );
 
+  const handleUpdateComment = useCallback(async (commentId: number, title: string, content: string) => {
+    if (!selectedStudyKey) return;
+    try {
+      await updateComment(selectedStudyKey, commentId, title, content);
+      const fetchedComments = await fetchComments(selectedStudyKey);
+      setComments(fetchedComments);
+    } catch (e) {
+      console.error("코멘트 수정 실패:", e);
+      // 사용자에게 에러 알림을 표시할 수 있습니다.
+    }
+  }, [selectedStudyKey]);
+
+  const handleDeleteComment = useCallback(async (commentId: number) => {
+    if (!selectedStudyKey) return;
+    try {
+      await deleteComment(selectedStudyKey, commentId);
+      const fetchedComments = await fetchComments(selectedStudyKey);
+      setComments(fetchedComments);
+    } catch (e) {
+      console.error("코멘트 삭제 실패:", e);
+      // 사용자에게 에러 알림을 표시할 수 있습니다.
+    }
+  }, [selectedStudyKey]);
+
   return (
     <div className="bg-neutral-900 text-neutral-100 min-h-screen flex flex-col">
       <Card className="m-4 sm:m-6 md:m-8 bg-neutral-900/60 border-neutral-800 shadow-none flex-1 flex flex-col">
@@ -148,6 +172,8 @@ const PacsPlusSearchMinimal: React.FC<PacsPlusSearchMinimalProps> = ({
               comments={comments}
               isLoading={isCommentsLoading}
               onAddComment={handleAddComment}
+              onUpdateComment={handleUpdateComment}
+              onDeleteComment={handleDeleteComment}
             />
           )}
         </CardContent>

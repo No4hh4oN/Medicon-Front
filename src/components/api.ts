@@ -95,6 +95,7 @@ export async function fetchComments(studyKey: number): Promise<CommentRow[]> {
 
   const apiData: ApiComment[] = await response.json();
   return apiData.map((c) => ({
+    commentId: c.commentId,
     userId: c.userId,
     commentTitle: c.commentTitle,
     commentContent: c.commentContent,
@@ -116,5 +117,32 @@ export async function postComment(studyKey: number, title: string, content: stri
   });
   if (!res.ok) {
     throw new Error("코멘트 등록 실패");
+  }
+}
+
+export async function updateComment(studyKey: number, commentId: number, title: string, content: string): Promise<void> {
+  const res = await fetch(`${BASE_URL}/v1/dicom/study/${studyKey}/comment/${commentId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      commentTitle: title,
+      commentContent: content,
+    }),
+    credentials: 'include',
+  });
+  if (!res.ok) {
+    const errorText = await res.text();
+    throw new Error(`코멘트 수정 실패: ${errorText}`);
+  }
+}
+
+export async function deleteComment(studyKey: number, commentId: number): Promise<void> {
+  const res = await fetch(`${BASE_URL}/v1/dicom/study/${studyKey}/comment/${commentId}`, {
+    method: 'DELETE',
+    credentials: 'include',
+  });
+  if (!res.ok) {
+    const errorText = await res.text();
+    throw new Error(`코멘트 삭제 실패: ${errorText}`);
   }
 }

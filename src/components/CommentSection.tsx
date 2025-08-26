@@ -9,6 +9,8 @@ interface CommentSectionProps {
   comments: CommentRow[];
   isLoading: boolean;
   onAddComment: (title: string, content: string) => Promise<void>;
+  onUpdateComment: (commentId: number, title: string, content: string) => Promise<void>;
+  onDeleteComment: (commentId: number) => Promise<void>;
 }
 
 export const CommentSection: React.FC<CommentSectionProps> = ({
@@ -16,6 +18,8 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
   comments,
   isLoading,
   onAddComment,
+  onUpdateComment,
+  onDeleteComment,
 }) => {
   const [commentTitle, setCommentTitle] = useState("");
   const [commentBody, setCommentBody] = useState("");
@@ -39,6 +43,41 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
     }
   }, [onAddComment, commentTitle, commentBody]);
 
+    // --- Edit State ---
+  const [editingCommentId, setEditingCommentId] = useState<number | null>(null);
+  const [editingTitle, setEditingTitle] = useState("");
+  const [editingContent, setEditingContent] = useState("");
+  const [isUpdating, setIsUpdating] = useState(false);
+
+  const handleStartEdit = (comment: CommentRow) => {
+    setEditingCommentId(comment.commentId);
+    setEditingTitle(comment.commentTitle);
+    setEditingContent(comment.commentContent);
+  };
+
+  const handleCancelEdit = () => {
+    setEditingCommentId(null);
+    setEditingTitle("");
+    setEditingContent("");
+  };
+
+  const handleSaveEdit = async () => {
+    if (editingCommentId === null || !editingTitle.trim() || !editingContent.trim()) return;
+    setIsUpdating(true);
+    try {
+      await onUpdateComment(editingCommentId, editingTitle, editingContent);
+      handleCancelEdit();
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const handleDelete = async (commentId: number) => {
+    if (window.confirm("정말로 이 코멘트를 삭제하시겠습니까?")) {
+      await onDeleteComment(commentId);
+    }
+  };
+
   return (
     <section id="comments" className="mt-4">
       <div className="rounded-xl border border-neutral-800 bg-neutral-900/60">
@@ -57,21 +96,51 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
                 </div>
               ) : comments.length > 0 ? (
                 <ul className="space-y-4 p-4">
-                  {comments.map((comment, index) => (
-                    <li key={index} className="rounded-xl border border-white p-4">
-                      <div className="flex justify-between items-baseline">
-                        <p className="font-medium text-neutral-100">{comment.commentTitle}</p>
-                        <span className="text-xs text-neutral-500">by {comment.userId}</span>
-                      </div>
-                      <p className="mt-2 text-sm text-neutral-300 whitespace-pre-wrap">
-                        {comment.commentContent}
-                      </p>
-                      <div className="mt-3 text-right text-xs text-neutral-500 space-y-1">
-                        <p>생성: {comment.createdAt}</p>
-                        <p>수정: {comment.updatedAt}</p>
-                      </div>
-                    </li>
-                  ))}
+                {comments.map((comment) =>
+                    editingCommentId === comment.commentId ? (
+                      // --- Edit Mode ---
+                      <li key={comment.commentId} className="rounded-xl border border-sky-500 p-4">
+                        <Input
+                          value={editingTitle}
+                          onChange={(e) => setEditingTitle(e.target.value)}
+                          placeholder="제목"
+                          className="mb-3 bg-neutral-800 border-neutral-700 placeholder:text-neutral-500"
+                        />
+                        <textarea
+                          value={editingContent}
+                          onChange={(e) => setEditingContent(e.target.value)}
+                          placeholder="내용"
+                          rows={4}
+                          className="w-full rounded-md bg-neutral-800 border border-neutral-700 px-3 py-2 text-sm outline-none placeholder:text-neutral-500 focus:border-neutral-500"
+                        />
+                        <div className="mt-3 flex justify-end gap-2">
+                          <Button variant="ghost" onClick={handleCancelEdit}>취소</Button>
+                          <Button onClick={handleSaveEdit} disabled={isUpdating} className="bg-sky-500 hover:bg-sky-600">
+                            {isUpdating ? "저장 중..." : "저장"}
+                          </Button>
+                        </div>
+                      </li>
+                    ) : (
+                      // --- View Mode ---
+                      <li key={comment.commentId} className="rounded-xl border border-white p-4">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <p className="font-medium text-neutral-100">{comment.commentTitle}</p>
+                            <span className="text-xs text-neutral-500">by {comment.userId}</span>
+                          </div>
+                          <div className="flex gap-2">
+                            <Button variant="ghost" size="sm" onClick={() => handleStartEdit(comment)}>수정</Button>
+                            <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-400" onClick={() => handleDelete(comment.commentId)}>삭제</Button>
+                          </div>
+                        </div>
+                        <p className="mt-2 text-sm text-neutral-300 whitespace-pre-wrap">{comment.commentContent}</p>
+                        <div className="mt-3 text-right text-xs text-neutral-500 space-y-1">
+                          <p>생성: {comment.createdAt}</p>
+                          <p>수정: {comment.updatedAt}</p>
+                        </div>
+                      </li>
+                    )
+                  )}
                 </ul>
               ) : (
                 <div className="py-10 text-center text-neutral-500">코멘트가 없습니다.</div>
