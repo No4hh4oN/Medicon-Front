@@ -8,6 +8,8 @@ import type{
 
 const BASE_URL = "http://localhost:8080/api";
 
+
+//검색
 export async function fetchStudies(
   searchType: "pname" | "pid" | "modality",
   query: string
@@ -21,7 +23,9 @@ export async function fetchStudies(
     endpoint = `/modality/${encodeURIComponent(query)}`;
   }
 
-  const response = await fetch(`${BASE_URL}${endpoint}`);
+  const response = await fetch(`${BASE_URL}${endpoint}`, {
+    credentials: "include",
+  });
   if (!response.ok) {
     throw new Error(`API 요청 실패: ${response.statusText}`);
   }
@@ -80,8 +84,11 @@ export async function fetchStudies(
   return newRows;
 }
 
+//진료
 export async function fetchComments(studyKey: number): Promise<CommentRow[]> {
-  const response = await fetch(`${BASE_URL}/v1/dicom/study/${studyKey}/comment`);
+  const response = await fetch(`${BASE_URL}/v1/dicom/study/${studyKey}/comment`, {
+    credentials: "include",
+  });
   if (!response.ok) {
     throw new Error(`코멘트 API 요청 실패: ${response.statusText}`);
   }
@@ -96,17 +103,18 @@ export async function fetchComments(studyKey: number): Promise<CommentRow[]> {
   }));
 }
 
+//진료 기록 작성
 export async function postComment(studyKey: number, title: string, content: string): Promise<void> {
-  const res = await fetch(`${BASE_URL}/comment/${studyKey}`, {
+  const res = await fetch(`${BASE_URL}/v1/dicom/study/${studyKey}/comment`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       commentTitle: title,
       commentContent: content,
     }),
+    credentials: "include",
   });
   if (!res.ok) {
     throw new Error("코멘트 등록 실패");
   }
 }
-

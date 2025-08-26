@@ -1,5 +1,6 @@
 import * as React from "react";
 import { useState, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,17 +27,17 @@ const PacsPlusSearchMinimal: React.FC<PacsPlusSearchMinimalProps> = ({
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [rows, setRows] = useState<ResultRow[]>(initialRows);
   const [isLoading, setIsLoading] = useState(false);
-
   const [selectedStudyKey, setSelectedStudyKey] = useState<number | null>(null);
   const [comments, setComments] = useState<CommentRow[]>([]);
   const [isCommentsLoading, setIsCommentsLoading] = useState(false);
+  const navigate = useNavigate();
 
   const onSearch = useCallback(async () => {
     const query = searchQuery.trim();
     if (!query) {
+      setRows(initialRows);
       setSelectedStudyKey(null);
       setComments([]);
-      setRows(initialRows);
       return;
     }
 
@@ -57,6 +58,7 @@ const PacsPlusSearchMinimal: React.FC<PacsPlusSearchMinimalProps> = ({
 
   const handleRowClick = useCallback(
     async (studyKey: number) => {
+      // 같은 행을 다시 클릭하면 코멘트 창을 닫습니다.
       if (selectedStudyKey === studyKey) {
         setSelectedStudyKey(null);
         setComments([]);
@@ -65,19 +67,26 @@ const PacsPlusSearchMinimal: React.FC<PacsPlusSearchMinimalProps> = ({
 
       setSelectedStudyKey(studyKey);
       setIsCommentsLoading(true);
-      setComments([]);
+      setComments([]); // 이전 코멘트 목록을 비웁니다.
 
       try {
-        const formatted = await fetchComments(studyKey);
-        setComments(formatted);
+        const fetchedComments = await fetchComments(studyKey);
+        setComments(fetchedComments);
       } catch (e) {
         console.error("[PacsPlusSearchMinimal] 코멘트 API 요청 오류:", e);
-        setComments([]);
+        setComments([]); // 오류 발생 시 코멘트 목록을 비웁니다.
       } finally {
         setIsCommentsLoading(false);
       }
     },
     [selectedStudyKey]
+  );
+
+  const handleRowDoubleClick = useCallback(
+    (studyKey: number) => {
+      navigate(`/dicomviewer/${studyKey}`);
+    },
+    [navigate]
   );
 
   const handleAddComment = useCallback(
@@ -86,19 +95,9 @@ const PacsPlusSearchMinimal: React.FC<PacsPlusSearchMinimalProps> = ({
 
       try {
         await postComment(selectedStudyKey, title, content);
-
-        // Optimistically update the UI
-        const now = new Date().toLocaleString();
-        setComments((prev) => [
-          ...prev,
-          {
-            userId: "me", // Or get from auth context
-            commentTitle: title,
-            commentContent: content,
-            createdAt: now,
-            updatedAt: now,
-          },
-        ]);
+        // 코멘트 등록 후 목록을 새로고침하여 최신 데이터를 반영합니다.
+        const fetchedComments = await fetchComments(selectedStudyKey);
+        setComments(fetchedComments);
       } catch (e) {
         console.error("코멘트 등록 실패:", e);
         // 사용자에게 에러 알림을 표시할 수 있습니다.
@@ -141,9 +140,8 @@ const PacsPlusSearchMinimal: React.FC<PacsPlusSearchMinimalProps> = ({
             </Button>
           </div>
 
-          <StudyTable rows={rows} isLoading={isLoading} onRowClick={handleRowClick} />
+          <StudyTable rows={rows} isLoading={isLoading} onRowClick={handleRowClick} onRowDoubleClick={handleRowDoubleClick} />
 
-          {/* 코멘트 패널 */}
           {selectedStudyKey !== null && (
             <CommentSection
               studyKey={selectedStudyKey}
