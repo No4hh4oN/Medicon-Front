@@ -1,9 +1,9 @@
-import DicomViewer from './components/DicomViewer';
+import Viewer from './pages/Viewer';
 
 export default function App() {
     return (
         <div style={{ width: '100vw', height: '100vh' }}>
-            <DicomViewer />
+            <Viewer />
         </div>
     );
 }
