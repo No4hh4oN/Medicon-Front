@@ -20,7 +20,7 @@ const RENDERING_ENGINE_ID = 'rendering-engine';
 const TOOLGROUP_ID = 'toolgroup';
 
 export default function DicomViewer({ studyKey }: Props) {
-    const { containerRef, engineRef, toolGroupId } = useDicomEngine();
+    const { containerRef, engineRef, renderingEngineId, toolGroupId } = useDicomEngine();
     const { setStackToViewport } = useSeriesStack(engineRef);
 
     // 시리즈 로딩용 입력값
@@ -36,6 +36,8 @@ export default function DicomViewer({ studyKey }: Props) {
     // 뷰포트별 첫 imageId 저장
     const [firstImgByVp, setFirstImgByVp] = useState<Record<string, string>>({});
 
+    const [viewportId, setViewportId] = useState<string[]>([]);
+    const [activeViewportId, setActiveViewportId] = useState<string | null>(null);
 
     // 레이아웃 적용(언제든 호출)
     const applyLayout = (rows: number, cols: number) => {
@@ -45,8 +47,8 @@ export default function DicomViewer({ studyKey }: Props) {
             engineRef.current,
             containerRef.current,
             { rows, cols },
-            TOOLGROUP_ID,
-            RENDERING_ENGINE_ID
+            toolGroupId,
+            renderingEngineId,
         );
 
         setFirstImgByVp({}); // 레이아웃 바뀌면 이전 오버레이 매핑 초기화
@@ -74,9 +76,12 @@ export default function DicomViewer({ studyKey }: Props) {
                 engineRef.current,
                 containerRef.current,
                 layout,
-                TOOLGROUP_ID,
-                RENDERING_ENGINE_ID
+                toolGroupId,
+                renderingEngineId
             );
+
+            setViewportId(vpIds);
+            if (!activeViewportId && vpIds.length) setActiveViewportId(vpIds[0]);
 
             // 필요한 만큼만 로드
             const need = Math.min(layout.rows * layout.cols, vpIds.length, sorted.length - startIdx);
@@ -112,7 +117,7 @@ export default function DicomViewer({ studyKey }: Props) {
         <div style={{ display: 'grid', gridTemplateRows: 'auto 1fr', height: '100%' }}>
             {/* 백엔드 입력/로딩 UI */}
             <div style={{ padding: 8, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-            {/* 
+                {/* 
                 <input
                     style={{ width: 160 }}
                     value={startSeriesKey}
@@ -133,7 +138,13 @@ export default function DicomViewer({ studyKey }: Props) {
                 <button onClick={() => loadFromStart()}
                     disabled={loading || String(startSeriesKey).trim() === ''}>불러오기</button>
                 <span style={{ opacity: 0.7 }}>좌 : 윈도우레벨 / ctrl+좌 : 팬 / 우: 줌 / 휠 : 스택 스크롤</span>
-                <Toolbar toolGroupId={toolGroupId} />
+                <Toolbar
+                    toolGroupId={toolGroupId}
+                    renderingEngineId={renderingEngineId}
+                    viewportId={activeViewportId ?? viewportId[0]}
+                    studyKey={studyKey}
+                    seriesKey={startSeriesKey}
+                />
             </div>
 
             {/* 뷰포트 */}
