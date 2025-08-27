@@ -106,10 +106,10 @@ const PacsPlusSearchMinimal: React.FC<PacsPlusSearchMinimalProps> = ({
     [selectedStudyKey]
   );
 
-  const handleUpdateComment = useCallback(async (commentId: number, title: string, content: string) => {
+  const handleUpdateComment = useCallback(async (commentId: number, title: string, content: string, original: CommentRow) => {
     if (!selectedStudyKey) return;
     try {
-      await updateComment(selectedStudyKey, commentId, title, content);
+      await updateComment(selectedStudyKey, commentId, title, content, original);
       const fetchedComments = await fetchComments(selectedStudyKey);
       setComments(fetchedComments);
     } catch (e) {

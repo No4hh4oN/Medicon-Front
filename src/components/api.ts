@@ -112,6 +112,7 @@ export async function postComment(studyKey: number, title: string, content: stri
     body: JSON.stringify({
       commentTitle: title,
       commentContent: content,
+      
     }),
     credentials: "include",
   });
@@ -120,13 +121,16 @@ export async function postComment(studyKey: number, title: string, content: stri
   }
 }
 
-export async function updateComment(studyKey: number, commentId: number, title: string, content: string): Promise<void> {
+export async function updateComment(studyKey: number, commentId: number, title: string, content: string, original: CommentRow): Promise<void> {
   const res = await fetch(`${BASE_URL}/v1/dicom/study/${studyKey}/comment/${commentId}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       commentTitle: title,
       commentContent: content,
+      originalTitle: original.commentTitle,
+      originalContent: original.commentContent,
+      createdAt: original.createdAt
     }),
     credentials: 'include',
   });
