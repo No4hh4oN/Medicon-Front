@@ -1,4 +1,9 @@
+
 import Viewer from './pages/Viewer';
+
+import DicomViewer from './components/DicomViewer';
+import PacsPlusSearchMinimal from './components/SearchComponents';
+
 
 export default function App() {
     return (
