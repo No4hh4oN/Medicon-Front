@@ -118,10 +118,10 @@ const PacsPlusSearchMinimal: React.FC<PacsPlusSearchMinimalProps> = ({
     }
   }, [selectedStudyKey]);
 
-  const handleDeleteComment = useCallback(async (commentId: number) => {
+  const handleDeleteComment = useCallback(async (commentId: number, comment: CommentRow) => {
     if (!selectedStudyKey) return;
     try {
-      await deleteComment(selectedStudyKey, commentId);
+      await deleteComment(selectedStudyKey, commentId, comment);
       const fetchedComments = await fetchComments(selectedStudyKey);
       setComments(fetchedComments);
     } catch (e) {

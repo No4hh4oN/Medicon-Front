@@ -140,9 +140,15 @@ export async function updateComment(studyKey: number, commentId: number, title: 
   }
 }
 
-export async function deleteComment(studyKey: number, commentId: number): Promise<void> {
+export async function deleteComment(studyKey: number, commentId: number, comment: CommentRow): Promise<void> {
   const res = await fetch(`${BASE_URL}/v1/dicom/study/${studyKey}/comment/${commentId}`, {
     method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      originalTitle: comment.commentTitle,
+      originalContent: comment.commentContent,
+      createdAt: comment.createdAt
+    }),
     credentials: 'include',
   });
   if (!res.ok) {

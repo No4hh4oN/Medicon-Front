@@ -10,7 +10,7 @@ interface CommentSectionProps {
   isLoading: boolean;
   onAddComment: (title: string, content: string) => Promise<void>;
   onUpdateComment: (commentId: number, title: string, content: string, original: CommentRow) => Promise<void>;
-  onDeleteComment: (commentId: number) => Promise<void>;
+  onDeleteComment: (commentId: number, comment: CommentRow) => Promise<void>;
 }
 
 export const CommentSection: React.FC<CommentSectionProps> = ({
@@ -73,9 +73,9 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
     }
   };
 
-  const handleDelete = async (commentId: number) => {
+  const handleDelete = async (commentId: number, comment: CommentRow) => {
     if (window.confirm("정말로 이 코멘트를 삭제하시겠습니까?")) {
-      await onDeleteComment(commentId);
+      await onDeleteComment(commentId, comment);
     }
   };
 
@@ -131,7 +131,7 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
                           </div>
                           <div className="flex gap-2">
                             <Button variant="ghost" size="sm" onClick={() => handleStartEdit(comment)}>수정</Button>
-                            <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-400" onClick={() => handleDelete(comment.commentId)}>삭제</Button>
+                            <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-400" onClick={() => handleDelete(comment.commentId, comment)}>삭제</Button>
                           </div>
                         </div>
                         <p className="mt-2 text-sm text-neutral-300 whitespace-pre-wrap">{comment.commentContent}</p>
