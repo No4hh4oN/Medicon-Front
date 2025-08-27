@@ -6,12 +6,13 @@ import {
   PanTool,
   ZoomTool,
 } from '@cornerstonejs/tools';
+//import { exportArrowAnnotations, fetchAnnotationsFromServer, importArrowAnnotations, saveAnnotationsToServer } from '@/services/annotation';
 
 interface Props {
   toolGroupId?: string;
 }
 
-export default function ViewerToolbar({ toolGroupId = 'cs3d-tg' }: Props) {
+export default function Toolbar({ toolGroupId = 'cs3d-tg' }: Props) {
   const [annotating, setAnnotating] = useState(false);
 
   const toggleArrowAnnotate = useCallback(() => {
@@ -19,7 +20,7 @@ export default function ViewerToolbar({ toolGroupId = 'cs3d-tg' }: Props) {
     if (!tg) return console.warn('ToolGroup을 찾을 수 없습니다:', toolGroupId);
 
     if (annotating) {
-      // 🔙 기본 모드 복원 (WL/WW, Pan, Zoom)
+      // 기본 모드 (WL/WW, Pan, Zoom)
       tg.setToolActive(WindowLevelTool.toolName, { bindings: [{ mouseButton: 1 }] });
       tg.setToolActive(PanTool.toolName, { bindings: [{ mouseButton: 2 }] });
       tg.setToolActive(ZoomTool.toolName, { bindings: [{ mouseButton: 4 }] });
@@ -33,12 +34,35 @@ export default function ViewerToolbar({ toolGroupId = 'cs3d-tg' }: Props) {
       setAnnotating(true);
     }
   }, [annotating, toolGroupId]);
+  
+  /*
+  // 주석 저장
+  const onSave = async () => {
+    const arrows = exportArrowAnnotations();
+    const payload = {
+      studyKey,
+      seriesKey,
+      imageIdScope: 'series',
+      annotaion: arrows,
+      savedAt: new Date().toISOString(),
+    }
+    await saveAnnotationsToServer(payload);
+  };
+
+  // 주석 불러오기
+  const onLoad = async () => {
+    const bundle = await fetchAnnotationsFromServer({ studyKey, seriesKey });
+    importArrowAnnotations(bundle, renderingEnigineId);
+  }*/
 
   return (
     <div style={{  display: 'inline-flex', width: 'fit-content', height: 'fit-content'}}>
       <button onClick={toggleArrowAnnotate}>
         {annotating ? '주석 모드 종료' : 'Arrow 주석 달기'}
       </button>
+      {/*
+      <button onClick={onSave}>주석 저장</button>
+      <button onClick={onLoad}>주석 불러오기</button> */}
     </div>
   );
 }

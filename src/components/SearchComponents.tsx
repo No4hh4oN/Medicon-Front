@@ -84,7 +84,7 @@ const PacsPlusSearchMinimal: React.FC<PacsPlusSearchMinimalProps> = ({
 
   const handleRowDoubleClick = useCallback(
     (studyKey: number) => {
-      navigate(`/dicomviewer/${studyKey}`);
+      navigate(`/viewer/${studyKey}`);
     },
     [navigate]
   );

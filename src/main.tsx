@@ -5,7 +5,7 @@ import './App.css'
 import App from './App.tsx'
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Login from "./components/Login.tsx";
-import DicomViewer from './components/DicomViewer.tsx'
+import Viewer from './pages/Viewer.tsx'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
@@ -13,7 +13,7 @@ createRoot(document.getElementById('root')!).render(
       <Routes>
         <Route path="/search" element={<App />} />
         <Route path="/login" element={<Login />}/>
-        <Route path="/dicomViewer" element={<DicomViewer />}/>
+        <Route path="/viewer/:studyKey" element={<Viewer />}/>
       </Routes>
     </BrowserRouter>
   </StrictMode>,
