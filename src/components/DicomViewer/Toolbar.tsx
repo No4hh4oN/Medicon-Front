@@ -6,13 +6,23 @@ import {
   PanTool,
   ZoomTool,
 } from '@cornerstonejs/tools';
-//import { exportArrowAnnotations, fetchAnnotationsFromServer, importArrowAnnotations, saveAnnotationsToServer } from '@/services/annotation';
+import { exportArrowAnnotations, fetchAnnotationsFromServer, importArrowAnnotations, saveAnnotationsToServer } from '@/services/annotation';
 
 interface Props {
-  toolGroupId?: string;
+  toolGroupId?: string,
+  studyKey: string,
+  seriesKey: string,
+  renderingEngineId: string,
+  viewportId: string,
 }
 
-export default function Toolbar({ toolGroupId = 'cs3d-tg' }: Props) {
+export default function Toolbar({
+  toolGroupId = 'cs3d-tg',
+  studyKey,
+  seriesKey,
+  renderingEngineId,
+  viewportId,
+  }: Props) {
   const [annotating, setAnnotating] = useState(false);
 
   const toggleArrowAnnotate = useCallback(() => {
@@ -35,15 +45,14 @@ export default function Toolbar({ toolGroupId = 'cs3d-tg' }: Props) {
     }
   }, [annotating, toolGroupId]);
   
-  /*
   // 주석 저장
   const onSave = async () => {
     const arrows = exportArrowAnnotations();
     const payload = {
       studyKey,
       seriesKey,
-      imageIdScope: 'series',
-      annotaion: arrows,
+      imageIdScope: 'series' as const,
+      annotations: arrows,
       savedAt: new Date().toISOString(),
     }
     await saveAnnotationsToServer(payload);
@@ -52,17 +61,17 @@ export default function Toolbar({ toolGroupId = 'cs3d-tg' }: Props) {
   // 주석 불러오기
   const onLoad = async () => {
     const bundle = await fetchAnnotationsFromServer({ studyKey, seriesKey });
-    importArrowAnnotations(bundle, renderingEnigineId);
-  }*/
+    importArrowAnnotations(bundle, renderingEngineId, viewportId);
+  }
 
   return (
     <div style={{  display: 'inline-flex', width: 'fit-content', height: 'fit-content'}}>
       <button onClick={toggleArrowAnnotate}>
         {annotating ? '주석 모드 종료' : 'Arrow 주석 달기'}
       </button>
-      {/*
+      
       <button onClick={onSave}>주석 저장</button>
-      <button onClick={onLoad}>주석 불러오기</button> */}
+      <button onClick={onLoad}>주석 불러오기</button>
     </div>
   );
 }
