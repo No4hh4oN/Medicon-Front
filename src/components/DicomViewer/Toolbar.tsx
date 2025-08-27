@@ -8,7 +8,7 @@ import {
 } from '@cornerstonejs/tools';
 import { exportArrowAnnotations, fetchAnnotationsFromServer, importArrowAnnotations, saveAnnotationsToServer } from '@/services/annotation';
 
-interface Props {
+interface ToolbarProps {
   toolGroupId?: string,
   studyKey: string,
   seriesKey: string,
@@ -22,7 +22,7 @@ export default function Toolbar({
   seriesKey,
   renderingEngineId,
   viewportId,
-  }: Props) {
+  }: ToolbarProps) {
   const [annotating, setAnnotating] = useState(false);
 
   const toggleArrowAnnotate = useCallback(() => {
@@ -55,6 +55,10 @@ export default function Toolbar({
       annotations: arrows,
       savedAt: new Date().toISOString(),
     }
+  console.log('payload (object):', payload);
+  console.log('payload (json):', JSON.stringify(payload, null, 2));
+  console.groupEnd();
+
     await saveAnnotationsToServer(payload);
   };
 
