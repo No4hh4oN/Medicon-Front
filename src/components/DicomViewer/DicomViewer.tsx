@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import MetaData from './MetaData';
 import useDicomEngine from '../../hooks/useDicomEngine';
@@ -12,19 +12,23 @@ type Layout = {
     cols: number
 }
 
+type Props = {
+    studyKey: string;
+}
+
 const RENDERING_ENGINE_ID = 'rendering-engine';
 const TOOLGROUP_ID = 'toolgroup';
 
-export default function DicomViewer() {
+export default function DicomViewer({ studyKey }: Props) {
     const { containerRef, engineRef, toolGroupId } = useDicomEngine();
     const { setStackToViewport } = useSeriesStack(engineRef);
 
     // 시리즈 로딩용 입력값
-    const [apiRoot, setApiRoot] = useState('http://localhost:8080/api/v1/dicom');
-    const [studyKey, setStudyKey] = useState('21');
-    const [startSeriesKey, setStartSeriesKey] = useState('1');
+    //const [studyKey, setStudyKey] = useState('21');
+    //const [startSeriesKey, setStartSeriesKey] = useState('1');
+    const startSeriesKey = '1';
 
-    const [layout, setLayout] = useState<Layout>({ rows: 2, cols: 2 })
+    const [layout, setLayout] = useState<Layout>({ rows: 1, cols: 1 })
 
     const [loading, setLoading] = useState(false);
     const [status, setStatus] = useState<string>('Ready');
@@ -52,10 +56,10 @@ export default function DicomViewer() {
     const loadFromStart = async () => {
         if (!engineRef.current || !containerRef.current) return;
         setLoading(true);
-        setStatus('스터디 로딩 중…');
+        setStatus('검사 로딩 중…');
 
         try {
-            const study = await fetchStudy(apiRoot, studyKey);
+            const study = await fetchStudy(studyKey);
             const list = Array.isArray(study.series) ? study.series : [];
             if (!list.length) { setStatus('시리즈 없음'); return; }
 
@@ -98,30 +102,23 @@ export default function DicomViewer() {
         }
     };
 
+    useEffect(() => {
+        loadFromStart();
+    }, [studyKey, layout.rows, layout.cols, startSeriesKey]);
+
 
 
     return (
         <div style={{ display: 'grid', gridTemplateRows: 'auto 1fr', height: '100%' }}>
             {/* 백엔드 입력/로딩 UI */}
             <div style={{ padding: 8, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                <input
-                    style={{ flex: '1 1 360px' }}
-                    value={apiRoot}
-                    onChange={(e) => setApiRoot(e.target.value)}
-                    placeholder="API Root"
-                />
-                <input
-                    style={{ width: 160 }}
-                    value={studyKey}
-                    onChange={(e) => setStudyKey(e.target.value)}
-                    placeholder="studyKey"
-                />
+            {/* 
                 <input
                     style={{ width: 160 }}
                     value={startSeriesKey}
                     onChange={(e) => setStartSeriesKey(e.target.value)}
                     placeholder="seriesKey"
-                />
+                />*/}
                 <select
                     value={`${layout.rows}x${layout.cols}`}
                     onChange={(e) => {

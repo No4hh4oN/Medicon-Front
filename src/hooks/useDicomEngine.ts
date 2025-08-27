@@ -44,6 +44,7 @@ export default function useDicomEngine() {
             addTool(ZoomTool);
             addTool(StackScrollTool);
             addTool(WindowLevelTool);
+            addTool(ArrowAnnotateTool);
 
             // 툴 그룹 생성/연결
             let tg = ToolGroupManager.getToolGroup(TOOLGROUP_ID);
@@ -55,7 +56,7 @@ export default function useDicomEngine() {
             tg.addTool(StackScrollTool.toolName);
             tg.addTool(WindowLevelTool.toolName);
             tg.addTool(ArrowAnnotateTool.toolName);
-            //tg.addViewport(VIEWPORT_ID, RENDERING_ENGINE_ID);
+            tg.addViewport(VIEWPORT_ID, RENDERING_ENGINE_ID);
 
             // 바인딩 (좌: 윈도우레벨 / 우: 줌 / Ctrl+좌: 팬 / 휠 : 스택)
             tg.setToolActive(WindowLevelTool.toolName, {

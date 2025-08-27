@@ -1,7 +1,3 @@
-
-import Viewer from './pages/Viewer';
-
-import DicomViewer from './pages/Viewer';
 import PacsPlusSearchMinimal from './components/SearchComponents';
 
 
