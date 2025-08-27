@@ -9,7 +9,7 @@ interface CommentSectionProps {
   comments: CommentRow[];
   isLoading: boolean;
   onAddComment: (title: string, content: string) => Promise<void>;
-  onUpdateComment: (commentId: number, title: string, content: string) => Promise<void>;
+  onUpdateComment: (commentId: number, title: string, content: string, original: CommentRow) => Promise<void>;
   onDeleteComment: (commentId: number) => Promise<void>;
 }
 
@@ -48,11 +48,12 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
   const [editingTitle, setEditingTitle] = useState("");
   const [editingContent, setEditingContent] = useState("");
   const [isUpdating, setIsUpdating] = useState(false);
-
+  const [original, setOriginal] = useState<CommentRow | null>(null);
   const handleStartEdit = (comment: CommentRow) => {
     setEditingCommentId(comment.commentId);
     setEditingTitle(comment.commentTitle);
     setEditingContent(comment.commentContent);
+    setOriginal(comment);
   };
 
   const handleCancelEdit = () => {
@@ -62,10 +63,10 @@ export const CommentSection: React.FC<CommentSectionProps> = ({
   };
 
   const handleSaveEdit = async () => {
-    if (editingCommentId === null || !editingTitle.trim() || !editingContent.trim()) return;
+    if (editingCommentId === null || !editingTitle.trim() || !editingContent.trim() || original === null) return;
     setIsUpdating(true);
     try {
-      await onUpdateComment(editingCommentId, editingTitle, editingContent);
+      await onUpdateComment(editingCommentId, editingTitle, editingContent, original);
       handleCancelEdit();
     } finally {
       setIsUpdating(false);
