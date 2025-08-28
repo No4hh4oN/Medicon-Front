@@ -80,7 +80,6 @@ export async function saveAnnotationsToServer(payload: AnnotationBundlePayload) 
       return {
         ...keys,
         annotations: JSON.stringify({ version: '5.3.0', objects: annotations }),
-        createdBy: '이남현', // FIXME: 실제 사용자 정보로 교체
         createdAt: new Date().toISOString().slice(0, 19).replace('T', ' '),
       };
     })
@@ -103,6 +102,7 @@ export async function saveAnnotationsToServer(payload: AnnotationBundlePayload) 
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payloadItem),
+      credentials: 'include', // Add this line
     });
   });
 

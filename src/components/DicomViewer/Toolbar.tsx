@@ -82,6 +82,7 @@ export default function Toolbar({
         annotations,
         savedAt: new Date().toISOString(),
       });
+      
       alert('주석이 저장되었습니다.');
     } catch (e: any) {
       console.error('Annotation 저장 중 오류 발생:', e);
