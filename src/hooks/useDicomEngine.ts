@@ -1,11 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
 import {
     RenderingEngine,
-    init as coreInit,
+    //init as coreInit,
 } from '@cornerstonejs/core';
-import { init as dicomImageLoaderInit } from '@cornerstonejs/dicom-image-loader';
+//import { init as dicomImageLoaderInit } from '@cornerstonejs/dicom-image-loader';
 import {
-    init as toolsInit,
+    //init as toolsInit,
     addTool,
     ToolGroupManager,
     Enums as toolsEnums,
@@ -15,10 +15,12 @@ import {
     WindowLevelTool,
     ArrowAnnotateTool,
 } from '@cornerstonejs/tools';
+import { ensureCornerstoneReady } from './bootstrap';
 
 const RENDERING_ENGINE_ID = 'rendering-engine';
 //const VIEWPORT_ID = 'viewport';
 const TOOLGROUP_ID = 'toolgroup';
+
 
 // 초기화 (core/ tools/ engine/ toolgroup 생성)
 export default function useDicomEngine() {
@@ -30,9 +32,7 @@ export default function useDicomEngine() {
     useEffect(() => {
         let mounted = true;
         (async () => {
-            await coreInit();
-            await dicomImageLoaderInit({ maxWebWorkers: 2 });
-            await toolsInit();
+            await ensureCornerstoneReady();
 
             if (!mounted) return;
 
@@ -98,6 +98,9 @@ export default function useDicomEngine() {
                 console.warn('렌더링 엔진 정리 중 오류 발생:', err);
             }
             engineRef.current = null;
+
+            // try { ToolGroupManager.destroyToolGroup(TOOLGROUP_ID);} catch{}
+            // 뷰어 생애주기에 맞춰 툴그룹 지우려면 주석해제
         };
     }, []);
 

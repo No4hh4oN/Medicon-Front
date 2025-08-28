@@ -1,21 +1,24 @@
 // src/components/AnnotationModal.tsx
 import * as React from "react";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
+import { RenderingEngine, Enums } from "@cornerstonejs/core";
 import { Button } from "@/components/ui/button";
+import { ToolGroupManager, ArrowAnnotateTool } from "@cornerstonejs/tools";
+import { importArrowAnnotations } from "@/services/annotation";
+import { ensureCornerstoneReady } from "@/hooks/bootstrap"; // ← 경로 확인
 
+/* ======================= Types ======================= */
 export type AnnotationModalData = {
   logId: number;
   userId: string;
   studyKey: number;
   commentId: number | null;
   createdAt: string;
-  actionType?: string; // U/C/D 등
-
-  // 원본/신규 내용 모두 받음 (null 가능)
+  actionType?: string; // C/I/U/D 등
   originalTitle?: string | null;
-  originalContent?: string | null;
+  originalContent?: string | null; // ← 컨테이너 JSON 문자열(annotations 문자열 포함 가능)
   newTitle?: string | null;
-  newContent?: string | null;
+  newContent?: string | null;      // ← 컨테이너 JSON 문자열(annotations 문자열 포함 가능)
 };
 
 export interface AnnotationModalProps {
@@ -24,24 +27,146 @@ export interface AnnotationModalProps {
   onClose: () => void;
 }
 
+/* ======================= Utils ======================= */
+// 컨테이너(JSON 문자열) → { container, bundle } 파싱
+function extractBundleFromContainer(raw?: string | null) {
+  if (!raw) return { container: null as any, bundle: null as any };
+  let container: any = null;
+  try { container = JSON.parse(raw); } catch { return { container: null, bundle: null }; }
+
+  // 컨테이너 자체가 번들일 수도, annotations 문자열을 품고 있을 수도
+  if (container?.version && Array.isArray(container?.objects)) {
+    return { container, bundle: container };
+  }
+  let bundle = container?.annotations;
+  if (typeof bundle === "string") {
+    try { bundle = JSON.parse(bundle); } catch { bundle = null; }
+  }
+  return { container, bundle };
+}
+
+// 번들/컨테이너에서 imageId 해석 (번들 우선 → 키로 조합)
+function resolveImageId(container: any, bundle: any, base = "http://localhost:8080/api/v1/dicom") {
+  const obj = Array.isArray(bundle?.objects) ? bundle.objects[0] : null;
+  const fromBundle =
+    obj?.referencedImageId ||
+    obj?.metadata?.referencedImageId ||
+    obj?.metadata?.referencedImageURI;
+
+  if (typeof fromBundle === "string") {
+    return fromBundle.startsWith("wadouri:") ? fromBundle : `wadouri:${fromBundle}`;
+  }
+
+  const s = container?.studyKey, se = container?.seriesKey, i = container?.imageKey;
+  if (s == null || se == null || i == null) return undefined;
+
+  const f = container?.frameNo;
+  const frameSeg = typeof f === "number" && f >= 0 ? `/frames/${f}` : "";
+  // 백엔드가 images/instances 중 무엇을 쓰는지에 따라 바꾸세요(기본 images)
+  const leaf = "images";
+  const url = `${base}/studies/${s}/series/${se}/${leaf}/${i}${frameSeg}`;
+  return `wadouri:${url}`;
+}
+
+function pretty(raw?: string | null) {
+  if (!raw) return "";
+  try { return JSON.stringify(JSON.parse(raw), null, 2); }
+  catch { return raw; }
+}
+
+/* ======================= Preview (독립 엔진/툴그룹, 보기 전용) ======================= */
+type CompareViewProps = { side: "left" | "right"; bundleJson?: string | null };
+
+function AnnotationPreview({ side, bundleJson }: CompareViewProps) {
+  const hostRef = useRef<HTMLDivElement | null>(null);
+
+  // 재렌더에도 불변이도록 useRef로 고유 ID 고정
+  const engineId = useRef(`anno-prev-engine-${side}-${Math.random().toString(36).slice(2)}`).current;
+  const viewportId = useRef(`anno-prev-vp-${side}-${Math.random().toString(36).slice(2)}`).current;
+  const toolGroupId = useRef(`anno-prev-tg-${side}-${Math.random().toString(36).slice(2)}`).current;
+
+  useEffect(() => {
+    let re: RenderingEngine | null = null;
+
+    (async () => {
+      if (!hostRef.current || !bundleJson) return;
+
+      // Cornerstone 전역 초기화 보장 (core/loader/tools + addTool(ArrowAnnotate))
+      await ensureCornerstoneReady();
+
+      // 1) 컨테이너/번들 파싱
+      const { container, bundle } = extractBundleFromContainer(bundleJson);
+      if (!bundle) {
+        console.warn("AnnotationPreview: 번들을 파싱하지 못했습니다.", { container });
+        return;
+      }
+
+      // 2) imageId 결정
+      const imageId = resolveImageId(container, bundle);
+      if (!imageId) {
+        console.warn("AnnotationPreview: imageId를 찾을 수 없습니다.", { container, bundle });
+        return;
+      }
+
+      // 3) 엔진/뷰포트 생성
+      re = new RenderingEngine(engineId);
+      const el = hostRef.current;
+
+      re.enableElement({
+        viewportId,
+        type: Enums.ViewportType.STACK,
+        element: el!,
+        defaultOptions: { background: [0, 0, 0] },
+      });
+
+      // 4) 보기 전용 ToolGroup (Arrow만)
+      let tg = ToolGroupManager.getToolGroup(toolGroupId);
+      if (!tg) tg = ToolGroupManager.createToolGroup(toolGroupId)!;
+      // @ts-ignore(간단 중복체크)
+      if (!(tg as any).tools?.[ArrowAnnotateTool.toolName]) {
+        tg.addTool(ArrowAnnotateTool.toolName);
+      }
+      tg.addViewport(viewportId, engineId);
+      tg.setToolPassive(ArrowAnnotateTool.toolName);
+
+      // 5) 이미지 로드 → 주석 입히기
+      const vp = re.getViewport(viewportId) as any;
+      await vp.setStack({ imageIds: [imageId] });
+      await re.render();
+
+      importArrowAnnotations(bundle, engineId, viewportId);
+
+      // 보기 전용
+      el!.style.pointerEvents = "none";
+    })();
+
+    // 6) 클린업
+    return () => {
+      try { ToolGroupManager.getToolGroup(toolGroupId)?.removeViewports(viewportId, engineId); } catch {}
+      try { re?.disableElement(viewportId); } catch {}
+      try { re?.destroy?.(); } catch {}
+      try { ToolGroupManager.destroyToolGroup(toolGroupId); } catch {}
+    };
+  }, [bundleJson, side, engineId, viewportId, toolGroupId]);
+
+  return (
+    <div
+      ref={hostRef}
+      className="rounded bg-black/60 w-full h-[260px] md:h-[320px] overflow-hidden"
+    />
+  );
+}
+
+/* ======================= Modal 본체 ======================= */
 const AnnotationModal: React.FC<AnnotationModalProps> = ({ open, data, onClose }) => {
   if (!open) return null;
 
-  // 디버깅 로그 (열릴 때마다)
   useEffect(() => {
-    console.log("Annotation modal data:", data);
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [data, onClose]);
+  }, [onClose]);
 
-  const pretty = (raw?: string | null) => {
-    if (!raw) return "";
-    try { return JSON.stringify(JSON.parse(raw), null, 2); }
-    catch { return raw; }
-  };
-
-  // 좌/우 내용 미리 가공
   const originalPretty = useMemo(() => pretty(data.originalContent), [data.originalContent]);
   const newPretty      = useMemo(() => pretty(data.newContent),      [data.newContent]);
 
@@ -73,7 +198,7 @@ const AnnotationModal: React.FC<AnnotationModalProps> = ({ open, data, onClose }
           <Info label="시간" value={data.createdAt} />
         </div>
 
-        {/* Title diff (옵션) */}
+        {/* Title diff */}
         {(data.originalTitle || data.newTitle) && (
           <div className="px-6 pt-4 pb-2">
             <div className="text-neutral-400 text-sm mb-2">제목</div>
@@ -94,9 +219,34 @@ const AnnotationModal: React.FC<AnnotationModalProps> = ({ open, data, onClose }
           </div>
         )}
 
-        {/* Content diff: 왼쪽 ORIGINAL_CONTENT / 오른쪽 NEW_CONTENT */}
+        {/* 이미지 미리보기 (좌/우) */}
+        {(data.originalContent || data.newContent) && (
+          <div className="px-6 pt-4">
+            <div className="text-neutral-400 text-sm mb-2">주석 이미지 미리보기</div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <div className="text-neutral-400 text-xs">이전 (ORIGINAL)</div>
+                {data.originalContent ? (
+                  <AnnotationPreview side="left" bundleJson={data.originalContent} />
+                ) : (
+                  <div className="text-neutral-500 bg-neutral-800 rounded p-3 text-center">-</div>
+                )}
+              </div>
+              <div className="space-y-1">
+                <div className="text-neutral-400 text-xs">현재 (NEW)</div>
+                {data.newContent ? (
+                  <AnnotationPreview side="right" bundleJson={data.newContent} />
+                ) : (
+                  <div className="text-neutral-500 bg-neutral-800 rounded p-3 text-center">-</div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* JSON 텍스트 비교 */}
         <div className="px-6 pb-6 pt-4">
-          <div className="text-neutral-400 text-sm mb-2">내용</div>
+          <div className="text-neutral-400 text-sm mb-2">내용(JSON)</div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div className="space-y-1">
               <div className="text-neutral-400 text-xs">이전 (ORIGINAL_CONTENT)</div>
@@ -119,7 +269,7 @@ const AnnotationModal: React.FC<AnnotationModalProps> = ({ open, data, onClose }
 
 export default AnnotationModal;
 
-/** 작은 정보박스 */
+/* ======================= Small Info ======================= */
 function Info({ label, value, nowrap = false }: { label: string; value: string; nowrap?: boolean }) {
   return (
     <div className="space-y-1">
@@ -128,3 +278,4 @@ function Info({ label, value, nowrap = false }: { label: string; value: string; 
     </div>
   );
 }
+
