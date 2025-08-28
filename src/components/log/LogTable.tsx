@@ -3,7 +3,6 @@ import * as React from "react";
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -11,6 +10,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+
+// ★ 시간 포맷 유틸 임포트 (경로는 프로젝트에 맞게)
+import { normalizeToYMDHMS } from "../../DateFormat";
 
 /** ───────────────── 타입 ───────────────── **/
 type ActionType = "C" | "I" | "U" | "D" | string;
@@ -20,101 +22,35 @@ type LogRaw = {
   studyKey: number;
   userId: string;
   commentId: number | null;
-  commentType: string;
+  commentType: string; // <-- 고정 아님
   originalTitle: string | null;
   originalContent: string | null;
   newTitle: string | null;
   newContent: string | null;
   actionType: ActionType;
-  createdAt: string;          // 서버 원본(형식 섞여있음)
-  updatedAt?: string | null;  // 서버 원본(형식 섞여있음)
+  createdAt: string;
+  updatedAt?: string | null;
 };
 
 type LogRow = Omit<LogRaw, "createdAt" | "updatedAt"> & {
-  createdAt: string;          // 통일 포맷 "YYYY-MM-DD HH:mm:ss"
-  updatedAt: string;          // 통일 포맷 or "-"
+  createdAt: string;  // "YYYY-MM-DD HH:mm:ss"
+  updatedAt: string;  // "YYYY-MM-DD HH:mm:ss" | "-"
 };
 
-/** ───────────────── 유틸: 시간 파싱/포맷 통일 ───────────────── **/
-
-// ISO 마이크로초 → 밀리초(3자리)로 절단 (JS Date는 ms까지만 안전)
-function clampIsoFractionToMs(s: string): string {
-  // ex) 2025-08-27T17:32:59.903612 -> 2025-08-27T17:32:59.903
-  return s.replace(/(\.\d{3})\d+/, "$1");
+/** ───────────────── 뱃지 유틸 ───────────────── **/
+// commentType이 무엇이 오든 보기 좋게 표시. 미리 아는 타입은 색 지정, 그 외엔 기본 회색.
+function getCommentTypeBadge(t: string) {
+  const map: Record<string, { text: string; className: string }> = {
+    COMMENT: { text: "COMMENT", className: "bg-indigo-100 text-indigo-800" },
+    NOTE:    { text: "NOTE",    className: "bg-teal-100 text-teal-800" },
+    REPORT:  { text: "REPORT",  className: "bg-purple-100 text-purple-800" },
+    SYSTEM:  { text: "SYSTEM",  className: "bg-gray-200 text-gray-800" },
+    ERROR:   { text: "ERROR",   className: "bg-rose-100 text-rose-800" },
+    AUDIT:   { text: "AUDIT",   className: "bg-amber-100 text-amber-800" },
+  };
+  return map[t] ?? { text: t, className: "bg-neutral-700 text-neutral-100" };
 }
 
-// 공용 포맷 "YYYY-MM-DD HH:mm:ss"
-function fmtYMDHMS(d: Date): string {
-  const pad2 = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} `
-       + `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
-}
-
-// 문자열 → Date 관용 파서
-function parseFlexibleDate(input?: string | null): Date | null {
-  if (!input) return null;
-  const s = String(input).trim();
-  if (!s) return null;
-
-  // 1) ISO 류 (T 포함, 소수점 길이 다양)
-  if (s.includes("T")) {
-    const iso = clampIsoFractionToMs(s);
-    const d = new Date(iso);
-    return isNaN(d.valueOf()) ? null : d;
-  }
-
-  // 2) 하이픈 로컬형: 2025-08-27 16:57:10(.123)
-  {
-    const m = s.match(
-      /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?$/
-    );
-    if (m) {
-      const [, y, M, D, h, mi, se] = m;
-      const d = new Date(+y, +M - 1, +D, +h, +mi, +se);
-      return isNaN(d.valueOf()) ? null : d;
-    }
-  }
-
-  // 3) 슬래시 YY/MM/DD: 25/08/27 17:19:26(.675297600)
-  {
-    const m = s.match(
-      /^(\d{2})\/(\d{2})\/(\d{2})\s+(\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?$/
-    );
-    if (m) {
-      const [, yy, mm, dd, h, mi, se] = m;
-      const year = 2000 + +yy; // 25 -> 2025
-      const d = new Date(year, +mm - 1, +dd, +h, +mi, +se);
-      return isNaN(d.valueOf()) ? null : d;
-    }
-  }
-
-  // 4) 한국형: 2025. 8. 27. 오후 5:32:42
-  {
-    const m = s.match(
-      /(\d{4})\. (\d{1,2})\. (\d{1,2})\. (오전|오후) (\d{1,2}):(\d{2}):(\d{2})/
-    );
-    if (m) {
-      const [, y, M, D, ampm, hStr, mi, se] = m;
-      let h = +hStr;
-      if (ampm === "오후" && h !== 12) h += 12;
-      if (ampm === "오전" && h === 12) h = 0;
-      const d = new Date(+y, +M - 1, +D, h, +mi, +se);
-      return isNaN(d.valueOf()) ? null : d;
-    }
-  }
-
-  // 5) 기타 브라우저 파서가 처리 가능한 형식
-  const d = new Date(s);
-  return isNaN(d.valueOf()) ? null : d;
-}
-
-// 최종 통일 포맷
-function normalizeDateString(raw?: string | null): string {
-  const d = parseFlexibleDate(raw);
-  return d ? fmtYMDHMS(d) : (raw ?? "-");
-}
-
-/** ───────────────── 액션 뱃지 유틸 ───────────────── **/
 function getActionTypeInfo(actionType: ActionType) {
   switch (actionType) {
     case "C":
@@ -133,24 +69,68 @@ function getActionTypeInfo(actionType: ActionType) {
 /** ───────────────── 페이지 컴포넌트 ───────────────── **/
 const LogsView: React.FC = () => {
   // 선택 기준
-  const [actionType, setActionType] = useState<"ALL" | ActionType>("ALL");
-  const [userId, setUserId] = useState("");
-  const [studyKey, setStudyKey] = useState<string>("");
+  const [actionType, setActionType] = useState<string>("ALL");
+  const [selCommentType, setSelCommentType] = useState<string>("ALL"); // ★ 추가
+  const [selUserId, setSelUserId] = useState<string>("ALL");
+  const [selStudyKey, setSelStudyKey] = useState<string>("ALL");
+  const [selCommentId, setSelCommentId] = useState<string>("ALL"); // 'NONE'은 null 대응
 
   // 데이터 상태
   const [rows, setRows] = useState<LogRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
+  // 드롭다운 옵션 (고유값 추출)
+  const commentTypeOptions = useMemo(() => {
+    const set = new Set<string>();
+    rows.forEach(r => set.add(r.commentType));
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [rows]);
+
+  const userIdOptions = useMemo(() => {
+    const set = new Set<string>();
+    rows.forEach(r => set.add(r.userId));
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [rows]);
+
+  const studyKeyOptions = useMemo(() => {
+    const set = new Set<string>();
+    rows.forEach(r => set.add(String(r.studyKey)));
+    return Array.from(set).sort((a, b) => Number(a) - Number(b));
+  }, [rows]);
+
+  const commentIdOptions = useMemo(() => {
+    const set = new Set<string>();
+    rows.forEach(r => set.add(r.commentId === null ? "NONE" : String(r.commentId)));
+    return Array.from(set).sort((a, b) => {
+      if (a === "NONE") return -1;
+      if (b === "NONE") return 1;
+      return Number(a) - Number(b);
+    });
+  }, [rows]);
+
   // 필터링
   const filtered = useMemo(() => {
     return rows.filter((r) => {
       if (actionType !== "ALL" && r.actionType !== actionType) return false;
-      if (userId && !r.userId.toLowerCase().includes(userId.toLowerCase())) return false;
-      if (studyKey && String(r.studyKey) !== studyKey) return false;
+
+      if (selCommentType !== "ALL" && r.commentType !== selCommentType) return false; // ★ 추가
+
+      if (selUserId !== "ALL" && r.userId !== selUserId) return false;
+
+      if (selStudyKey !== "ALL" && String(r.studyKey) !== selStudyKey) return false;
+
+      if (selCommentId !== "ALL") {
+        if (selCommentId === "NONE") {
+          if (r.commentId !== null) return false;
+        } else {
+          if (String(r.commentId) !== selCommentId) return false;
+        }
+      }
+
       return true;
     });
-  }, [rows, actionType, userId, studyKey]);
+  }, [rows, actionType, selCommentType, selUserId, selStudyKey, selCommentId]);
 
   const fetchLogs = useCallback(async () => {
     setLoading(true);
@@ -167,8 +147,8 @@ const LogsView: React.FC = () => {
       // 시간 통일 처리
       const normalized: LogRow[] = raw.map((l) => ({
         ...l,
-        createdAt: normalizeDateString(l.createdAt),
-        updatedAt: normalizeDateString(l.updatedAt ?? null),
+        createdAt: normalizeToYMDHMS(l.createdAt),
+        updatedAt: normalizeToYMDHMS(l.updatedAt ?? null),
       }));
 
       setRows(normalized);
@@ -184,6 +164,15 @@ const LogsView: React.FC = () => {
     fetchLogs();
   }, [fetchLogs]);
 
+  // 필터 초기화
+  const resetFilters = useCallback(() => {
+    setActionType("ALL");
+    setSelCommentType("ALL"); // ★ 추가
+    setSelUserId("ALL");
+    setSelStudyKey("ALL");
+    setSelCommentId("ALL");
+  }, []);
+
   return (
     <div className="bg-neutral-900 text-neutral-100 min-h-screen flex flex-col">
       <Card className="m-4 sm:m-6 md:m-8 bg-neutral-900/60 border-neutral-800 shadow-none flex-1 flex flex-col">
@@ -193,16 +182,14 @@ const LogsView: React.FC = () => {
 
         <CardContent className="p-6 flex-1 flex flex-col gap-4 overflow-y-auto">
           {/* 선택 기준 */}
-          <div className="flex flex-col md:flex-row items-center gap-3">
-            <Select
-              value={actionType}
-              onValueChange={(v) => setActionType(v as "ALL" | ActionType)}
-            >
-              <SelectTrigger className="w-full md:w-[160px] bg-neutral-800 border-neutral-700">
+          <div className="grid grid-cols-1 md:grid-cols-6 gap-3 items-center">
+            {/* 액션 타입 */}
+            <Select value={actionType} onValueChange={setActionType}>
+              <SelectTrigger className="w-full bg-neutral-800 border-neutral-700">
                 <SelectValue placeholder="액션" />
               </SelectTrigger>
               <SelectContent className="bg-neutral-800 border-neutral-700 text-neutral-100">
-                <SelectItem value="ALL">전체</SelectItem>
+                <SelectItem value="ALL">액션: 전체</SelectItem>
                 <SelectItem value="C">생성(C)</SelectItem>
                 <SelectItem value="I">추가(I)</SelectItem>
                 <SelectItem value="U">수정(U)</SelectItem>
@@ -210,27 +197,85 @@ const LogsView: React.FC = () => {
               </SelectContent>
             </Select>
 
-            <Input
-              placeholder="사용자 ID"
-              value={userId}
-              onChange={(e) => setUserId(e.target.value)}
-              className="flex-1 bg-neutral-800 border-neutral-700 placeholder:text-neutral-500"
-            />
+            {/* Comment Type */}
+            <Select value={selCommentType} onValueChange={setSelCommentType}>
+              <SelectTrigger className="w-full bg-neutral-800 border-neutral-700">
+                <SelectValue placeholder="Comment Type" />
+              </SelectTrigger>
+              <SelectContent className="bg-neutral-800 border-neutral-700 text-neutral-100 max-h-72 overflow-auto">
+                <SelectItem value="ALL">타입: 전체</SelectItem>
+                {commentTypeOptions.length === 0 ? (
+                  <div className="px-3 py-2 text-neutral-400">옵션 없음</div>
+                ) : (
+                  commentTypeOptions.map(t => (
+                    <SelectItem key={t} value={t}>{t}</SelectItem>
+                  ))
+                )}
+              </SelectContent>
+            </Select>
 
-            <Input
-              placeholder="Study Key"
-              value={studyKey}
-              onChange={(e) => setStudyKey(e.target.value)}
-              className="w-full md:w-[160px] bg-neutral-800 border-neutral-700 placeholder:text-neutral-500"
-            />
+            {/* 사용자 ID */}
+            <Select value={selUserId} onValueChange={setSelUserId}>
+              <SelectTrigger className="w-full bg-neutral-800 border-neutral-700">
+                <SelectValue placeholder="사용자 ID" />
+              </SelectTrigger>
+              <SelectContent className="bg-neutral-800 border-neutral-700 text-neutral-100 max-h-72 overflow-auto">
+                <SelectItem value="ALL">사용자: 전체</SelectItem>
+                {userIdOptions.length === 0 ? (
+                  <div className="px-3 py-2 text-neutral-400">옵션 없음</div>
+                ) : (
+                  userIdOptions.map(u => (
+                    <SelectItem key={u} value={u}>{u}</SelectItem>
+                  ))
+                )}
+              </SelectContent>
+            </Select>
 
-            <Button
-              onClick={fetchLogs}
-              className="w-full md:w-auto bg-sky-500 hover:bg-sky-600"
-              disabled={loading}
-            >
-              새로고침
-            </Button>
+            {/* Study Key */}
+            <Select value={selStudyKey} onValueChange={setSelStudyKey}>
+              <SelectTrigger className="w-full bg-neutral-800 border-neutral-700">
+                <SelectValue placeholder="Study Key" />
+              </SelectTrigger>
+              <SelectContent className="bg-neutral-800 border-neutral-700 text-neutral-100 max-h-72 overflow-auto">
+                <SelectItem value="ALL">Study: 전체</SelectItem>
+                {studyKeyOptions.length === 0 ? (
+                  <div className="px-3 py-2 text-neutral-400">옵션 없음</div>
+                ) : (
+                  studyKeyOptions.map(sk => (
+                    <SelectItem key={sk} value={sk}>{sk}</SelectItem>
+                  ))
+                )}
+              </SelectContent>
+            </Select>
+
+            {/* Comment ID */}
+            <Select value={selCommentId} onValueChange={setSelCommentId}>
+              <SelectTrigger className="w-full bg-neutral-800 border-neutral-700">
+                <SelectValue placeholder="Comment ID" />
+              </SelectTrigger>
+              <SelectContent className="bg-neutral-800 border-neutral-700 text-neutral-100 max-h-72 overflow-auto">
+                <SelectItem value="ALL">Comment: 전체</SelectItem>
+                {commentIdOptions.length === 0 ? (
+                  <div className="px-3 py-2 text-neutral-400">옵션 없음</div>
+                ) : (
+                  commentIdOptions.map(cid => (
+                    <SelectItem key={cid} value={cid}>
+                      {cid === "NONE" ? "없음" : cid}
+                    </SelectItem>
+                  ))
+                )}
+              </SelectContent>
+            </Select>
+
+            {/* 버튼들 */}
+            <div className="flex gap-2">
+              <Button onClick={fetchLogs} className="flex-1 bg-sky-500 hover:bg-sky-600" disabled={loading}>
+                새로고침
+              </Button>
+              <Button onClick={resetFilters} variant="outline" className="flex-1 border-neutral-700 text-neutral-200">
+                초기화
+              </Button>
+            </div>
           </div>
 
           {/* 테이블 */}
@@ -261,13 +306,10 @@ const LogsView: React.FC = () => {
               </thead>
               <tbody>
                 {!loading && !err && filtered.map((log) => {
-                  const badge = getActionTypeInfo(log.actionType);
-                  const originalFull = [log.originalTitle, log.originalContent]
-                    .filter(Boolean)
-                    .join(" - ");
-                  const newFull = [log.newTitle, log.newContent]
-                    .filter(Boolean)
-                    .join(" - ");
+                  const cBadge = getCommentTypeBadge(log.commentType);
+                  const aBadge = getActionTypeInfo(log.actionType);
+                  const originalFull = [log.originalTitle, log.originalContent].filter(Boolean).join(" - ");
+                  const newFull = [log.newTitle, log.newContent].filter(Boolean).join(" - ");
 
                   return (
                     <tr
@@ -276,10 +318,14 @@ const LogsView: React.FC = () => {
                     >
                       <td className="px-6 py-4 font-medium text-neutral-100">{log.logId}</td>
                       <td className="px-6 py-4">{log.userId}</td>
-                      <td className="px-6 py-4">{log.commentType}</td>
                       <td className="px-6 py-4">
-                        <span className={`px-2.5 py-0.5 text-xs font-semibold rounded-full ${badge.className}`}>
-                          {badge.text}
+                        <span className={`px-2.5 py-0.5 text-xs font-semibold rounded-full ${cBadge.className}`}>
+                          {cBadge.text}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={`px-2.5 py-0.5 text-xs font-semibold rounded-full ${aBadge.className}`}>
+                          {aBadge.text}
                         </span>
                       </td>
                       <td className="px-6 py-4">
