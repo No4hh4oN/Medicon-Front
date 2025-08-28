@@ -166,20 +166,21 @@ const LogsView: React.FC = () => {
   }, []);
 
   // 모달 열기 (ANNOTATION 행의 “자세히 보기” 클릭 시)
-  const openAnnotationModal = (log: LogRow) => {
-    const data: AnnotationModalData = {
-      logId: log.logId,
-      userId: log.userId,
-      studyKey: log.studyKey,
-      commentId: log.commentId,
-      createdAt: log.createdAt,
-      // U/D 등 상태와 무관하게, 표시 우선순위: new* → original*
-      title:   log.newTitle   ?? log.originalTitle   ?? "",
-      content: log.newContent ?? log.originalContent ?? "",
-    };
-    setModalData(data);
-    setModalOpen(true);
-  };
+const openAnnotationModal = (log: LogRow) => {
+  setModalData({
+    logId: log.logId,
+    userId: log.userId,
+    studyKey: log.studyKey,
+    commentId: log.commentId,
+    createdAt: log.createdAt,
+    actionType: log.actionType,
+    originalTitle: log.originalTitle,
+    originalContent: log.originalContent, // ← 왼쪽
+    newTitle: log.newTitle,
+    newContent: log.newContent,           // ← 오른쪽
+  });
+  setModalOpen(true);
+};
 
   return (
     <div className="bg-neutral-900 text-neutral-100 min-h-screen flex flex-col">
