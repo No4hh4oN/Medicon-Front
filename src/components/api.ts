@@ -155,4 +155,6 @@ export async function deleteComment(studyKey: number, commentId: number, comment
     const errorText = await res.text();
     throw new Error(`코멘트 삭제 실패: ${errorText}`);
   }
+
+  
 }
