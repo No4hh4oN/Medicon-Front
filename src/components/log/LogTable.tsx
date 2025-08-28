@@ -11,6 +11,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
+// ★ 모달 분리 파일 임포트
+import AnnotationModal, { type AnnotationModalData } from "../AnnotationModal";
 // ★ 시간 포맷 유틸 임포트 (경로는 프로젝트에 맞게)
 import { normalizeToYMDHMS } from "../../DateFormat";
 
@@ -22,7 +24,7 @@ type LogRaw = {
   studyKey: number;
   userId: string;
   commentId: number | null;
-  commentType: string; // <-- 고정 아님
+  commentType: string; // 고정 아님
   originalTitle: string | null;
   originalContent: string | null;
   newTitle: string | null;
@@ -37,65 +39,64 @@ type LogRow = Omit<LogRaw, "createdAt" | "updatedAt"> & {
   updatedAt: string;  // "YYYY-MM-DD HH:mm:ss" | "-"
 };
 
-/** ───────────────── 뱃지 유틸 ───────────────── **/
-// commentType이 무엇이 오든 보기 좋게 표시. 미리 아는 타입은 색 지정, 그 외엔 기본 회색.
+/** ───────────────── 유틸 ───────────────── **/
 function getCommentTypeBadge(t: string) {
   const map: Record<string, { text: string; className: string }> = {
-    COMMENT: { text: "COMMENT", className: "bg-indigo-100 text-indigo-800" },
-    NOTE:    { text: "NOTE",    className: "bg-teal-100 text-teal-800" },
-    REPORT:  { text: "REPORT",  className: "bg-purple-100 text-purple-800" },
-    SYSTEM:  { text: "SYSTEM",  className: "bg-gray-200 text-gray-800" },
-    ERROR:   { text: "ERROR",   className: "bg-rose-100 text-rose-800" },
-    AUDIT:   { text: "AUDIT",   className: "bg-amber-100 text-amber-800" },
+    COMMENT:    { text: "COMMENT",    className: "bg-indigo-100 text-indigo-800" },
+    NOTE:       { text: "NOTE",       className: "bg-teal-100 text-teal-800" },
+    REPORT:     { text: "REPORT",     className: "bg-purple-100 text-purple-800" },
+    SYSTEM:     { text: "SYSTEM",     className: "bg-gray-200 text-gray-800" },
+    ERROR:      { text: "ERROR",      className: "bg-rose-100 text-rose-800" },
+    AUDIT:      { text: "AUDIT",      className: "bg-amber-100 text-amber-800" },
+    ANNOTATION: { text: "ANNOTATION", className: "bg-neutral-100 text-neutral-900" },
   };
-  return map[t] ?? { text: t, className: "bg-neutral-700 text-neutral-100" };
+  const key = (t || "").toUpperCase();
+  return map[key] ?? { text: t, className: "bg-neutral-700 text-neutral-100" };
 }
 
 function getActionTypeInfo(actionType: ActionType) {
   switch (actionType) {
-    case "C":
-      return { text: "생성", className: "bg-green-100 text-green-800" };
-    case "I":
-      return { text: "추가", className: "bg-blue-100 text-blue-800" };
-    case "U":
-      return { text: "수정", className: "bg-yellow-100 text-yellow-800" };
-    case "D":
-      return { text: "삭제", className: "bg-red-100 text-red-800" };
-    default:
-      return { text: actionType, className: "bg-gray-100 text-gray-800" };
+    case "C": return { text: "생성", className: "bg-green-100 text-green-800" };
+    case "I": return { text: "추가", className: "bg-blue-100 text-blue-800" };
+    case "U": return { text: "수정", className: "bg-yellow-100 text-yellow-800" };
+    case "D": return { text: "삭제", className: "bg-red-100 text-red-800" };
+    default:  return { text: actionType, className: "bg-gray-100 text-gray-800" };
   }
 }
 
-/** ───────────────── 페이지 컴포넌트 ───────────────── **/
+const isAnnotationType = (t: string) => (t || "").toUpperCase() === "ANNOTATION";
+
+/** ───────────────── 페이지 ───────────────── **/
 const LogsView: React.FC = () => {
   // 선택 기준
   const [actionType, setActionType] = useState<string>("ALL");
-  const [selCommentType, setSelCommentType] = useState<string>("ALL"); // ★ 추가
+  const [selCommentType, setSelCommentType] = useState<string>("ALL");
   const [selUserId, setSelUserId] = useState<string>("ALL");
   const [selStudyKey, setSelStudyKey] = useState<string>("ALL");
-  const [selCommentId, setSelCommentId] = useState<string>("ALL"); // 'NONE'은 null 대응
+  const [selCommentId, setSelCommentId] = useState<string>("ALL");
 
-  // 데이터 상태
+  // 데이터
   const [rows, setRows] = useState<LogRow[]>([]);
   const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
+  const [err,   setErr] = useState<string | null>(null);
 
-  // 드롭다운 옵션 (고유값 추출)
+  // 모달
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalData, setModalData] = useState<AnnotationModalData | null>(null);
+
+  // 옵션
   const commentTypeOptions = useMemo(() => {
-    const set = new Set<string>();
-    rows.forEach(r => set.add(r.commentType));
+    const set = new Set<string>(); rows.forEach(r => set.add(r.commentType));
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [rows]);
 
   const userIdOptions = useMemo(() => {
-    const set = new Set<string>();
-    rows.forEach(r => set.add(r.userId));
+    const set = new Set<string>(); rows.forEach(r => set.add(r.userId));
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [rows]);
 
   const studyKeyOptions = useMemo(() => {
-    const set = new Set<string>();
-    rows.forEach(r => set.add(String(r.studyKey)));
+    const set = new Set<string>(); rows.forEach(r => set.add(String(r.studyKey)));
     return Array.from(set).sort((a, b) => Number(a) - Number(b));
   }, [rows]);
 
@@ -112,29 +113,24 @@ const LogsView: React.FC = () => {
   // 필터링
   const filtered = useMemo(() => {
     return rows.filter((r) => {
-      if (actionType !== "ALL" && r.actionType !== actionType) return false;
-
-      if (selCommentType !== "ALL" && r.commentType !== selCommentType) return false; // ★ 추가
-
-      if (selUserId !== "ALL" && r.userId !== selUserId) return false;
-
-      if (selStudyKey !== "ALL" && String(r.studyKey) !== selStudyKey) return false;
-
-      if (selCommentId !== "ALL") {
+      if (actionType     !== "ALL" && r.actionType     !== actionType)     return false;
+      if (selCommentType !== "ALL" && r.commentType    !== selCommentType) return false;
+      if (selUserId      !== "ALL" && r.userId         !== selUserId)      return false;
+      if (selStudyKey    !== "ALL" && String(r.studyKey) !== selStudyKey)  return false;
+      if (selCommentId   !== "ALL") {
         if (selCommentId === "NONE") {
           if (r.commentId !== null) return false;
         } else {
           if (String(r.commentId) !== selCommentId) return false;
         }
       }
-
       return true;
     });
   }, [rows, actionType, selCommentType, selUserId, selStudyKey, selCommentId]);
 
+  // 데이터 로딩
   const fetchLogs = useCallback(async () => {
-    setLoading(true);
-    setErr(null);
+    setLoading(true); setErr(null);
     try {
       const res = await fetch("http://localhost:8080/api/v1/logs/showAll", {
         headers: { Accept: "application/json" },
@@ -143,8 +139,6 @@ const LogsView: React.FC = () => {
       if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
 
       const raw: LogRaw[] = await res.json();
-
-      // 시간 통일 처리
       const normalized: LogRow[] = raw.map((l) => ({
         ...l,
         createdAt: normalizeToYMDHMS(l.createdAt),
@@ -160,18 +154,33 @@ const LogsView: React.FC = () => {
     }
   }, []);
 
-  useEffect(() => {
-    fetchLogs();
-  }, [fetchLogs]);
+  useEffect(() => { fetchLogs(); }, [fetchLogs]);
 
-  // 필터 초기화
+  // 초기화
   const resetFilters = useCallback(() => {
     setActionType("ALL");
-    setSelCommentType("ALL"); // ★ 추가
+    setSelCommentType("ALL");
     setSelUserId("ALL");
     setSelStudyKey("ALL");
     setSelCommentId("ALL");
   }, []);
+
+  // 모달 열기 (ANNOTATION 행의 “자세히 보기” 클릭 시)
+const openAnnotationModal = (log: LogRow) => {
+  setModalData({
+    logId: log.logId,
+    userId: log.userId,
+    studyKey: log.studyKey,
+    commentId: log.commentId,
+    createdAt: log.createdAt,
+    actionType: log.actionType,
+    originalTitle: log.originalTitle,
+    originalContent: log.originalContent, // ← 왼쪽
+    newTitle: log.newTitle,
+    newContent: log.newContent,           // ← 오른쪽
+  });
+  setModalOpen(true);
+};
 
   return (
     <div className="bg-neutral-900 text-neutral-100 min-h-screen flex flex-col">
@@ -208,7 +217,9 @@ const LogsView: React.FC = () => {
                   <div className="px-3 py-2 text-neutral-400">옵션 없음</div>
                 ) : (
                   commentTypeOptions.map(t => (
-                    <SelectItem key={t} value={t}>{t}</SelectItem>
+                    <SelectItem key={t} value={t} className="whitespace-nowrap break-keep">
+                      {t}
+                    </SelectItem>
                   ))
                 )}
               </SelectContent>
@@ -225,7 +236,9 @@ const LogsView: React.FC = () => {
                   <div className="px-3 py-2 text-neutral-400">옵션 없음</div>
                 ) : (
                   userIdOptions.map(u => (
-                    <SelectItem key={u} value={u}>{u}</SelectItem>
+                    <SelectItem key={u} value={u} className="whitespace-nowrap break-keep">
+                      {u}
+                    </SelectItem>
                   ))
                 )}
               </SelectContent>
@@ -242,7 +255,9 @@ const LogsView: React.FC = () => {
                   <div className="px-3 py-2 text-neutral-400">옵션 없음</div>
                 ) : (
                   studyKeyOptions.map(sk => (
-                    <SelectItem key={sk} value={sk}>{sk}</SelectItem>
+                    <SelectItem key={sk} value={sk} className="whitespace-nowrap break-keep">
+                      {sk}
+                    </SelectItem>
                   ))
                 )}
               </SelectContent>
@@ -259,7 +274,7 @@ const LogsView: React.FC = () => {
                   <div className="px-3 py-2 text-neutral-400">옵션 없음</div>
                 ) : (
                   commentIdOptions.map(cid => (
-                    <SelectItem key={cid} value={cid}>
+                    <SelectItem key={cid} value={cid} className="whitespace-nowrap break-keep">
                       {cid === "NONE" ? "없음" : cid}
                     </SelectItem>
                   ))
@@ -310,38 +325,70 @@ const LogsView: React.FC = () => {
                   const aBadge = getActionTypeInfo(log.actionType);
                   const originalFull = [log.originalTitle, log.originalContent].filter(Boolean).join(" - ");
                   const newFull = [log.newTitle, log.newContent].filter(Boolean).join(" - ");
+                  const annotationRow = isAnnotationType(log.commentType);
 
                   return (
-                    <tr
-                      key={log.logId}
-                      className="bg-neutral-900 border-b border-neutral-800 hover:bg-neutral-800/50"
-                    >
-                      <td className="px-6 py-4 font-medium text-neutral-100">{log.logId}</td>
-                      <td className="px-6 py-4">{log.userId}</td>
-                      <td className="px-6 py-4">
-                        <span className={`px-2.5 py-0.5 text-xs font-semibold rounded-full ${cBadge.className}`}>
+                    <tr key={log.logId} className="bg-neutral-900 border-b border-neutral-800 hover:bg-neutral-800/50">
+                      {/* ID */}
+                      <td className="px-6 py-4 font-medium text-neutral-100 whitespace-nowrap break-keep min-w-[56px]">
+                        {log.logId}
+                      </td>
+
+                      {/* 사용자 */}
+                      <td className="px-6 py-4 whitespace-nowrap break-keep min-w-[96px]">
+                        {log.userId}
+                      </td>
+
+                      {/* 타입 뱃지 */}
+                      <td className="px-6 py-4 whitespace-nowrap break-keep min-w-[120px]">
+                        <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold leading-none whitespace-nowrap break-keep ${cBadge.className}`}>
                           {cBadge.text}
                         </span>
                       </td>
-                      <td className="px-6 py-4">
-                        <span className={`px-2.5 py-0.5 text-xs font-semibold rounded-full ${aBadge.className}`}>
+
+                      {/* 액션 뱃지 */}
+                      <td className="px-6 py-4 whitespace-nowrap break-keep min-w-[96px]">
+                        <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold leading-none whitespace-nowrap break-keep ${aBadge.className}`}>
                           {aBadge.text}
                         </span>
                       </td>
+
+                      {/* 변경 내용 */}
                       <td className="px-6 py-4">
-                        {log.actionType === "U" ? (
+                        {annotationRow ? (
+                          <button
+                            type="button"
+                            onClick={() => openAnnotationModal(log)}
+                            className="inline-flex items-center gap-1 rounded px-2 py-0.5 
+                                       bg-neutral-800/60 hover:bg-neutral-700 
+                                       text-sky-300 hover:text-sky-200 
+                                       text-sm font-medium transition-colors"
+                            title="Annotation 상세 보기"
+                          >
+                            자세히 보기
+                            <svg xmlns="http://www.w3.org/2000/svg" className="size-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                              <path d="M12.293 4.293a1 1 0 0 1 1.414 0L18 8.586a2 2 0 0 1 0 2.828l-4.293 4.293a1 1 0 0 1-1.414-1.414L14.586 12H4a1 1 0 1 1 0-2h10.586l-2.293-2.293a1 1 0 0 1 0-1.414z" />
+                            </svg>
+                          </button>
+                        ) : log.actionType === "U" ? (
                           <div className="flex flex-col gap-1">
-                            <span className="text-red-400 line-through">{originalFull}</span>
-                            <span className="text-sky-400">{newFull}</span>
+                            <span className="text-red-400 line-through break-keep">{originalFull}</span>
+                            <span className="text-sky-400 break-keep">{newFull}</span>
                           </div>
                         ) : log.actionType === "D" ? (
-                          <span className="text-neutral-500 line-through">{originalFull}</span>
+                          <span className="text-neutral-500 line-through break-keep">{originalFull}</span>
                         ) : (
-                          <span className="text-neutral-100">{newFull || originalFull}</span>
+                          <span className="text-neutral-100 break-keep">{newFull || originalFull}</span>
                         )}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">{log.createdAt}</td>
-                      <td className="px-6 py-4 whitespace-nowrap">{log.updatedAt || "-"}</td>
+
+                      {/* 시간 */}
+                      <td className="px-6 py-4 whitespace-nowrap break-keep min-w-[144px]">
+                        {log.createdAt}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap break-keep min-w-[144px]">
+                        {log.updatedAt || "-"}
+                      </td>
                     </tr>
                   );
                 })}
@@ -358,6 +405,13 @@ const LogsView: React.FC = () => {
           </div>
         </CardContent>
       </Card>
+
+      {/* 모달 분리 파일 사용 */}
+      <AnnotationModal
+        open={!!modalOpen && !!modalData}
+        data={modalData as AnnotationModalData}
+        onClose={() => setModalOpen(false)}
+      />
     </div>
   );
 };
