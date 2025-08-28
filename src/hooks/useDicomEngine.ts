@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
     RenderingEngine,
     init as coreInit,
@@ -17,13 +17,14 @@ import {
 } from '@cornerstonejs/tools';
 
 const RENDERING_ENGINE_ID = 'rendering-engine';
-const VIEWPORT_ID = 'viewport';
+//const VIEWPORT_ID = 'viewport';
 const TOOLGROUP_ID = 'toolgroup';
 
 // 초기화 (core/ tools/ engine/ toolgroup 생성)
 export default function useDicomEngine() {
     const containerRef = useRef<HTMLDivElement | null>(null);
     const engineRef = useRef<RenderingEngine | null>(null);
+    const [isReady, setIsReady] = useState(false);
 
     // 1) Cornerstone 초기화 (앱 생애주기 1회)
     useEffect(() => {
@@ -33,7 +34,7 @@ export default function useDicomEngine() {
             await dicomImageLoaderInit({ maxWebWorkers: 2 });
             await toolsInit();
 
-            if (!mounted || !containerRef.current) return;
+            if (!mounted) return;
 
             // 렌더링 엔진 & 뷰포트
             const re = new RenderingEngine(RENDERING_ENGINE_ID);
@@ -56,7 +57,7 @@ export default function useDicomEngine() {
             tg.addTool(StackScrollTool.toolName);
             tg.addTool(WindowLevelTool.toolName);
             tg.addTool(ArrowAnnotateTool.toolName);
-            tg.addViewport(VIEWPORT_ID, RENDERING_ENGINE_ID);
+            //tg.addViewport(VIEWPORT_ID, RENDERING_ENGINE_ID);
 
             // 바인딩 (좌: 윈도우레벨 / 우: 줌 / Ctrl+좌: 팬 / 휠 : 스택)
             tg.setToolActive(WindowLevelTool.toolName, {
@@ -86,6 +87,7 @@ export default function useDicomEngine() {
                 changeTextCallback: () => prompt('주석 수정:') ?? '',
             })
 
+            setIsReady(true);
         })();
 
         return () => {
@@ -103,7 +105,8 @@ export default function useDicomEngine() {
         containerRef,
         engineRef,
         toolGroupId: TOOLGROUP_ID,
-        viewportId: VIEWPORT_ID,
+        //viewportId: VIEWPORT_ID,
         renderingEngineId: RENDERING_ENGINE_ID,
+        isReady,
      };
 }
