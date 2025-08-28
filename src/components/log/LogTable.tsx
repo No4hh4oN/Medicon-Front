@@ -1,4 +1,6 @@
 // src/pages/LogsView.tsx
+import { AnimatePresence, motion } from "framer-motion";
+import { startTransition } from "react";
 import * as React from "react";
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
@@ -17,7 +19,7 @@ import AnnotationModal, { type AnnotationModalData } from "../AnnotationModal";
 import { normalizeToYMDHMS } from "../../DateFormat";
 
 /** ───────────────── 타입 ───────────────── **/
-type ActionType = "C" | "I" | "U" | "D" | string;
+type ActionType = "C" | "I" | "U" | "D" | "R" | string;
 
 type LogRaw = {
   logId: number;
@@ -60,11 +62,15 @@ function getActionTypeInfo(actionType: ActionType) {
     case "I": return { text: "추가", className: "bg-blue-100 text-blue-800" };
     case "U": return { text: "수정", className: "bg-yellow-100 text-yellow-800" };
     case "D": return { text: "삭제", className: "bg-red-100 text-red-800" };
+    case "R": return { text: "조회", className: "bg-gray-200 text-gray-800" };
     default:  return { text: actionType, className: "bg-gray-100 text-gray-800" };
   }
 }
 
 const isAnnotationType = (t: string) => (t || "").toUpperCase() === "ANNOTATION";
+
+/** ───────────────── 상수 ───────────────── **/
+const PAGE_SIZE = 20;
 
 /** ───────────────── 페이지 ───────────────── **/
 const LogsView: React.FC = () => {
@@ -79,6 +85,10 @@ const LogsView: React.FC = () => {
   const [rows, setRows] = useState<LogRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [err,   setErr] = useState<string | null>(null);
+
+  // 페이지네이션 상태
+  const [page, setPage] = useState<number>(1);        // 1부터 시작 (백엔드와 일치)
+  const [hasMore, setHasMore] = useState<boolean>(true);
 
   // 모달
   const [modalOpen, setModalOpen] = useState(false);
@@ -110,9 +120,10 @@ const LogsView: React.FC = () => {
     });
   }, [rows]);
 
-  // 필터링
+  // 필터링 (※ 혹시 서버에서 'R'이 와도 프런트에서 한 번 더 제외)
   const filtered = useMemo(() => {
     return rows.filter((r) => {
+      if (r.actionType === "R") return false; // 조회 로그 제외
       if (actionType     !== "ALL" && r.actionType     !== actionType)     return false;
       if (selCommentType !== "ALL" && r.commentType    !== selCommentType) return false;
       if (selUserId      !== "ALL" && r.userId         !== selUserId)      return false;
@@ -128,35 +139,58 @@ const LogsView: React.FC = () => {
     });
   }, [rows, actionType, selCommentType, selUserId, selStudyKey, selCommentId]);
 
-  // 데이터 로딩
-  const fetchLogs = useCallback(async () => {
-    setLoading(true); setErr(null);
-    try {
-      const res = await fetch("http://localhost:8080/api/v1/logs/showAll", {
-        headers: { Accept: "application/json" },
-        credentials: "include",
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
+  // ───────── 데이터 로딩 (페이지/사이즈 기반) ─────────
+  const fetchLogs = useCallback(
+    async (append: boolean, targetPage: number) => {
+      setLoading(true); setErr(null);
+      try {
+        const url = `http://localhost:8080/api/v1/logs/showAll?page=${targetPage}&size=${PAGE_SIZE}`;
+        const res = await fetch(url, {
+          headers: { Accept: "application/json" },
+          credentials: "include",
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
 
-      const raw: LogRaw[] = await res.json();
-      const normalized: LogRow[] = raw.map((l) => ({
-        ...l,
-        createdAt: normalizeToYMDHMS(l.createdAt),
-        updatedAt: normalizeToYMDHMS(l.updatedAt ?? null),
-      }));
+        const raw: LogRaw[] = await res.json();
+        const normalized: LogRow[] = raw.map((l) => ({
+          ...l,
+          createdAt: normalizeToYMDHMS(l.createdAt),
+          updatedAt: normalizeToYMDHMS(l.updatedAt ?? null),
+        }));
 
-      setRows(normalized);
-    } catch (e: any) {
-      setErr(e?.message ?? "로그를 불러오지 못했습니다.");
-      setRows([]);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+        if (append) {
+          setRows(prev => [...prev, ...normalized]);
+        } else {
+          startTransition(() => setRows(normalized));
+        }
 
-  useEffect(() => { fetchLogs(); }, [fetchLogs]);
+        // 다음 페이지 존재 여부 판단
+        setHasMore(normalized.length === PAGE_SIZE);
+      } catch (e: any) {
+        setErr(e?.message ?? "로그를 불러오지 못했습니다.");
+        if (!append) setRows([]);
+      } finally {
+        setLoading(false);
+      }
+    },
+    []
+  );
 
-  // 초기화
+  // 첫 로딩 (1페이지)
+  useEffect(() => {
+    setPage(1);
+    setHasMore(true);
+    void fetchLogs(false, 1);
+  }, [fetchLogs]);
+
+  // 새로고침: 페이지/hasMore 초기화 후 1페이지 재호출 (소프트 리프레시)
+  const onRefresh = useCallback(() => {
+    setPage(1);
+    setHasMore(true);
+    void fetchLogs(false, 1);
+  }, [fetchLogs]);
+
+  // 초기화 (필터만 리셋)
   const resetFilters = useCallback(() => {
     setActionType("ALL");
     setSelCommentType("ALL");
@@ -165,22 +199,30 @@ const LogsView: React.FC = () => {
     setSelCommentId("ALL");
   }, []);
 
+  // 더 불러오기
+  const loadMore = useCallback(() => {
+    if (loading || !hasMore) return;
+    const next = page + 1;
+    setPage(next);
+    void fetchLogs(true, next);
+  }, [loading, hasMore, page, fetchLogs]);
+
   // 모달 열기 (ANNOTATION 행의 “자세히 보기” 클릭 시)
-const openAnnotationModal = (log: LogRow) => {
-  setModalData({
-    logId: log.logId,
-    userId: log.userId,
-    studyKey: log.studyKey,
-    commentId: log.commentId,
-    createdAt: log.createdAt,
-    actionType: log.actionType,
-    originalTitle: log.originalTitle,
-    originalContent: log.originalContent, // ← 왼쪽
-    newTitle: log.newTitle,
-    newContent: log.newContent,           // ← 오른쪽
-  });
-  setModalOpen(true);
-};
+  const openAnnotationModal = (log: LogRow) => {
+    setModalData({
+      logId: log.logId,
+      userId: log.userId,
+      studyKey: log.studyKey,
+      commentId: log.commentId,
+      createdAt: log.createdAt,
+      actionType: log.actionType,
+      originalTitle: log.originalTitle,
+      originalContent: log.originalContent, // ← 왼쪽
+      newTitle: log.newTitle,
+      newContent: log.newContent,           // ← 오른쪽
+    });
+    setModalOpen(true);
+  };
 
   return (
     <div className="bg-neutral-900 text-neutral-100 min-h-screen flex flex-col">
@@ -284,7 +326,7 @@ const openAnnotationModal = (log: LogRow) => {
 
             {/* 버튼들 */}
             <div className="flex gap-2">
-              <Button onClick={fetchLogs} className="flex-1 bg-sky-500 hover:bg-sky-600" disabled={loading}>
+              <Button onClick={onRefresh} className="flex-1 bg-sky-500 hover:bg-sky-600" disabled={loading}>
                 새로고침
               </Button>
               <Button onClick={resetFilters} variant="outline" className="flex-1 border-neutral-700 text-neutral-200">
@@ -294,11 +336,16 @@ const openAnnotationModal = (log: LogRow) => {
           </div>
 
           {/* 테이블 */}
-          <div className="relative overflow-x-auto shadow-md sm:rounded-lg">
-            <div className="px-6 py-4 bg-white/5">
-              {loading ? (
-                <p className="text-neutral-400">불러오는 중…</p>
-              ) : err ? (
+          <div
+            className={`relative overflow-x-auto shadow-md sm:rounded-lg transition-opacity duration-200 ${
+              loading ? "opacity-90" : "opacity-100"
+            }`}
+          >
+            <div className="px-6 py-4 bg-white/5 flex items-center gap-3">
+              {loading && (
+                <span className="inline-block size-2 rounded-full bg-sky-400 animate-pulse" aria-hidden />
+              )}
+              {err ? (
                 <p className="text-red-400">에러: {err}</p>
               ) : (
                 <p className="text-neutral-300">
@@ -319,79 +366,91 @@ const openAnnotationModal = (log: LogRow) => {
                   <th className="px-6 py-3">수정 시간</th>
                 </tr>
               </thead>
-              <tbody>
-                {!loading && !err && filtered.map((log) => {
-                  const cBadge = getCommentTypeBadge(log.commentType);
-                  const aBadge = getActionTypeInfo(log.actionType);
-                  const originalFull = [log.originalTitle, log.originalContent].filter(Boolean).join(" - ");
-                  const newFull = [log.newTitle, log.newContent].filter(Boolean).join(" - ");
-                  const annotationRow = isAnnotationType(log.commentType);
 
-                  return (
-                    <tr key={log.logId} className="bg-neutral-900 border-b border-neutral-800 hover:bg-neutral-800/50">
-                      {/* ID */}
-                      <td className="px-6 py-4 font-medium text-neutral-100 whitespace-nowrap break-keep min-w-[56px]">
-                        {log.logId}
-                      </td>
+              <tbody className="divide-y divide-neutral-800">
+                <AnimatePresence initial={false}>
+                  {!err &&
+                    filtered.map((log) => {
+                      const cBadge = getCommentTypeBadge(log.commentType);
+                      const aBadge = getActionTypeInfo(log.actionType);
+                      const originalFull = [log.originalTitle, log.originalContent].filter(Boolean).join(" - ");
+                      const newFull = [log.newTitle, log.newContent].filter(Boolean).join(" - ");
+                      const annotationRow = isAnnotationType(log.commentType);
 
-                      {/* 사용자 */}
-                      <td className="px-6 py-4 whitespace-nowrap break-keep min-w-[96px]">
-                        {log.userId}
-                      </td>
+                      return (
+                        <motion.tr
+                          key={`${log.logId}-${log.updatedAt}`}
+                          layout
+                          initial={{ opacity: 0, y: 6 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -6 }}
+                          transition={{ duration: 0.18 }}
+                          className="bg-neutral-900 hover:bg-neutral-800/50"
+                        >
+                          {/* ID */}
+                          <td className="px-6 py-4 font-medium text-neutral-100 whitespace-nowrap break-keep min-w-[56px]">
+                            {log.logId}
+                          </td>
 
-                      {/* 타입 뱃지 */}
-                      <td className="px-6 py-4 whitespace-nowrap break-keep min-w-[120px]">
-                        <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold leading-none whitespace-nowrap break-keep ${cBadge.className}`}>
-                          {cBadge.text}
-                        </span>
-                      </td>
+                          {/* 사용자 */}
+                          <td className="px-6 py-4 whitespace-nowrap break-keep min-w-[96px]">
+                            {log.userId}
+                          </td>
 
-                      {/* 액션 뱃지 */}
-                      <td className="px-6 py-4 whitespace-nowrap break-keep min-w-[96px]">
-                        <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold leading-none whitespace-nowrap break-keep ${aBadge.className}`}>
-                          {aBadge.text}
-                        </span>
-                      </td>
+                          {/* 타입 뱃지 */}
+                          <td className="px-6 py-4 whitespace-nowrap break-keep min-w-[120px]">
+                            <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold leading-none whitespace-nowrap break-keep ${cBadge.className}`}>
+                              {cBadge.text}
+                            </span>
+                          </td>
 
-                      {/* 변경 내용 */}
-                      <td className="px-6 py-4">
-                        {annotationRow ? (
-                          <button
-                            type="button"
-                            onClick={() => openAnnotationModal(log)}
-                            className="inline-flex items-center gap-1 rounded px-2 py-0.5 
-                                       bg-neutral-800/60 hover:bg-neutral-700 
-                                       text-sky-300 hover:text-sky-200 
-                                       text-sm font-medium transition-colors"
-                            title="Annotation 상세 보기"
-                          >
-                            자세히 보기
-                            <svg xmlns="http://www.w3.org/2000/svg" className="size-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                              <path d="M12.293 4.293a1 1 0 0 1 1.414 0L18 8.586a2 2 0 0 1 0 2.828l-4.293 4.293a1 1 0 0 1-1.414-1.414L14.586 12H4a1 1 0 1 1 0-2h10.586l-2.293-2.293a1 1 0 0 1 0-1.414z" />
-                            </svg>
-                          </button>
-                        ) : log.actionType === "U" ? (
-                          <div className="flex flex-col gap-1">
-                            <span className="text-red-400 line-through break-keep">{originalFull}</span>
-                            <span className="text-sky-400 break-keep">{newFull}</span>
-                          </div>
-                        ) : log.actionType === "D" ? (
-                          <span className="text-neutral-500 line-through break-keep">{originalFull}</span>
-                        ) : (
-                          <span className="text-neutral-100 break-keep">{newFull || originalFull}</span>
-                        )}
-                      </td>
+                          {/* 액션 뱃지 */}
+                          <td className="px-6 py-4 whitespace-nowrap break-keep min-w-[96px]">
+                            <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold leading-none whitespace-nowrap break-keep ${aBadge.className}`}>
+                              {aBadge.text}
+                            </span>
+                          </td>
 
-                      {/* 시간 */}
-                      <td className="px-6 py-4 whitespace-nowrap break-keep min-w-[144px]">
-                        {log.createdAt}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap break-keep min-w-[144px]">
-                        {log.updatedAt || "-"}
-                      </td>
-                    </tr>
-                  );
-                })}
+                          {/* 변경 내용 */}
+                          <td className="px-6 py-4">
+                            {annotationRow ? (
+                              <button
+                                type="button"
+                                onClick={() => openAnnotationModal(log)}
+                                className="inline-flex items-center gap-1 rounded px-2 py-0.5 
+                                           bg-neutral-800/60 hover:bg-neutral-700 
+                                           text-sky-300 hover:text-sky-200 
+                                           text-sm font-medium transition-colors"
+                                title="Annotation 상세 보기"
+                              >
+                                자세히 보기
+                                <svg xmlns="http://www.w3.org/2000/svg" className="size-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                                  <path d="M12.293 4.293a1 1 0 0 1 1.414 0L18 8.586a2 2 0 0 1 0 2.828l-4.293 4.293a1 1 0 0 1-1.414-1.414L14.586 12H4a1 1 0 1 1 0-2h10.586l-2.293-2.293a1 1 0 0 1 0-1.414z" />
+                                </svg>
+                              </button>
+                            ) : log.actionType === "U" ? (
+                              <div className="flex flex-col gap-1">
+                                <span className="text-red-400 line-through break-keep">{originalFull}</span>
+                                <span className="text-sky-400 break-keep">{newFull}</span>
+                              </div>
+                            ) : log.actionType === "D" ? (
+                              <span className="text-neutral-500 line-through break-keep">{originalFull}</span>
+                            ) : (
+                              <span className="text-neutral-100 break-keep">{newFull || originalFull}</span>
+                            )}
+                          </td>
+
+                          {/* 시간 */}
+                          <td className="px-6 py-4 whitespace-nowrap break-keep min-w-[144px]">
+                            {log.createdAt}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap break-keep min-w-[144px]">
+                            {log.updatedAt || "-"}
+                          </td>
+                        </motion.tr>
+                      );
+                    })}
+                </AnimatePresence>
 
                 {!loading && !err && filtered.length === 0 && (
                   <tr>
@@ -402,6 +461,23 @@ const openAnnotationModal = (log: LogRow) => {
                 )}
               </tbody>
             </table>
+
+            {/* 소프트 로딩 오버레이 */}
+            {loading && (
+              <div className="pointer-events-none absolute inset-0 bg-neutral-900/20 backdrop-blur-[1px]" />
+            )}
+          </div>
+
+          {/* 더 불러오기 버튼 */}
+          <div className="flex justify-center my-4">
+            {hasMore && !loading && !err && (
+              <Button
+                onClick={loadMore}
+                className="bg-neutral-700 hover:bg-neutral-600"
+              >
+                더 불러오기
+              </Button>
+            )}
           </div>
         </CardContent>
       </Card>
