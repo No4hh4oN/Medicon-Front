@@ -16,7 +16,7 @@ import {
 } from '@/services/annotation';
 import type { AnnotationBundlePayload } from '@/types/annotation';
 
-interface ToolbarProps {
+interface Props {
   toolGroupId?: string,
   studyKey: string,
   seriesKey?: string, // DicomViewer에서 필수가 아님
@@ -82,17 +82,12 @@ export default function Toolbar({
         annotations,
         savedAt: new Date().toISOString(),
       });
+      
       alert('주석이 저장되었습니다.');
     } catch (e: any) {
       console.error('Annotation 저장 중 오류 발생:', e);
       alert(`저장 실패: ${e.message}`);
     }
-
-  console.log('payload (object):', payload);
-  console.log('payload (json):', JSON.stringify(payload, null, 2));
-  console.groupEnd();
-
-    await saveAnnotationsToServer(payload);
 
   };
 
@@ -129,6 +124,7 @@ export default function Toolbar({
       alert('현재 이미지 ID를 가져올 수 없습니다.');
       return;
     }
+    console.log('Current Image ID:', currentImageId);
 
     const keys = parseImageIdKeys(currentImageId);
     if (!keys) {
@@ -139,6 +135,7 @@ export default function Toolbar({
 
     try {
       // ✅ imageKey를 명시적으로 넘김
+      console.log('Fetching annotations with:', { studyKey, seriesKey, imageKey: String(keys.imageKey) });
       const bundle = await fetchAnnotationsFromServer({
         studyKey,
         seriesKey,
