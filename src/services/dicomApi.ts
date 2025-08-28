@@ -12,7 +12,7 @@ export type Studies = {
 export async function fetchStudy(studyKey: string | number, apiRoot: string = API_ROOT): Promise<Studies> {
     const listUrl = `${apiRoot}/studies/${encodeURIComponent(studyKey)}`;
     const resp = await fetch(listUrl, { headers: { Accept: 'application/json' } });
-    if (!resp.ok) throw new Error(`Series list failed: ${resp.status} ${await resp.text()}`);
+    if (!resp.ok) throw new Error(`시리즈 리스트 에러: ${resp.status} ${await resp.text()}`);
 
     return resp.json();
 }

@@ -28,6 +28,7 @@ export function viewportGrid(
     canvasHost.style.position = 'absolute';
     canvasHost.style.inset = '0';
     canvasHost.style.outline = 'none';
+    //canvasHost.tabIndex = -1;
     cell.appendChild(canvasHost);
 
     // 오버레이 호스트 생성(메타데이터 표시)
@@ -35,6 +36,7 @@ export function viewportGrid(
     overlay.style.position = 'absolute';
     overlay.style.inset = '0';
     overlay.style.pointerEvents = 'none';
+    //overlay.style.zIndex = '1';
     overlay.dataset.overlayFor = `vp-${i}`;
     cell.appendChild(overlay);
 
@@ -58,18 +60,42 @@ export function rebuildGridAndBindTools(
   toolGroupId: string,
   engineId: string,
 ): string[] {
-  // 기존 뷰포트 disable
-  for (const vp of re.getViewports()) {
-    try { re.disableElement(vp.id); } catch { }
+
+  // ToolGroup 확보
+  const tg = ToolGroupManager.getToolGroup(toolGroupId) ?? ToolGroupManager.createToolGroup(toolGroupId);
+  if (!tg) throw new Error('ToolGroup 생성/획득 실패')
+
+  // ToolGroup에서 기존 뷰포트 분리 (중복 매핑 방지)
+  try {
+    const infos = tg?.getViewportsInfo?.() ?? [];
+    for (const info of infos) {
+      if (info.renderingEngineId === engineId) {
+        //tg.removeViewport(info.viewportId, engineId);
+        tg.removeViewports(info.viewportId, engineId);
+      }
+    }
+  } catch {}
+
+  //기존 뷰포트 disable
+  const prevViewports = [...re.getViewports()];
+  for (const vp of prevViewports) {
+    try { re.disableElement(vp.id); } 
+    catch {}
   }
 
   // 새 그리드 생성
   const vpIds = viewportGrid(re, gridRoot, layout);
 
   // ToolGroup에 새 뷰포트 연결
-  const tg = ToolGroupManager.getToolGroup(toolGroupId)!;
-  for (const vid of vpIds) tg.addViewport(vid, engineId);
+  for (const vid of vpIds) {
+    tg.addViewport(vid, engineId);
+  }
 
+  // 캔버스 크기 확정
+  try {
+    re.resize(true);
+  } catch {}
+  
   return vpIds;
 }
 
