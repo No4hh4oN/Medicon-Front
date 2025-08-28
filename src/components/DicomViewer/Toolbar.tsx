@@ -16,7 +16,7 @@ import {
 } from '@/services/annotation';
 import type { AnnotationBundlePayload } from '@/types/annotation';
 
-interface Props {
+interface ToolbarProps {
   toolGroupId?: string,
   studyKey: string,
   seriesKey?: string, // DicomViewer에서 필수가 아님
@@ -87,6 +87,13 @@ export default function Toolbar({
       console.error('Annotation 저장 중 오류 발생:', e);
       alert(`저장 실패: ${e.message}`);
     }
+
+  console.log('payload (object):', payload);
+  console.log('payload (json):', JSON.stringify(payload, null, 2));
+  console.groupEnd();
+
+    await saveAnnotationsToServer(payload);
+
   };
 
   // 주석 불러오기
