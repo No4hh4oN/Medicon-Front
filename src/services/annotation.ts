@@ -131,8 +131,10 @@ export async function fetchAnnotationsFromServer(params: {
   const { studyKey, seriesKey, imageKey } = params;
 
   const url = `${ANNOTATION_API_ROOT}/studies/${studyKey}/series/${seriesKey}/images/${imageKey}`;
+  console.log('Fetching annotations from URL:', url);
 
   const res = await fetch(url);
+  console.log('Annotation fetch response:', res);
   if (!res.ok) {
     throw new Error(`Annotation 불러오기 실패: ${res.status} - ${res.statusText}`);
   }
@@ -151,8 +153,20 @@ export async function fetchAnnotationsFromServer(params: {
   }
 
   try {
+    const rawArray = JSON.parse(text); // Parse the outer array
+    if (!Array.isArray(rawArray) || rawArray.length === 0) {
+      // Handle empty or non-array response
+      return {
+        studyKey,
+        seriesKey,
+        imageIdScope: 'image' as const,
+        annotations: [],
+        savedAt: new Date().toISOString(),
+      } as AnnotationBundlePayload;
+    }
+
     // 서버가 주는 형태가 유연할 수 있으니 안전하게 정규화
-    const raw = JSON.parse(text) as
+    const raw = rawArray[0] as
       | AnnotationBundlePayload
       | {
           annotations?:
@@ -171,14 +185,29 @@ export async function fetchAnnotationsFromServer(params: {
     // 2) 문자열인 경우 -> JSON 파싱 후 객체의 objects 또는 배열 사용
     else if (typeof (raw as any).annotations === 'string') {
       try {
-        const parsed = JSON.parse((raw as any).annotations);
-        if (Array.isArray(parsed?.objects)) {
-          annotations = parsed.objects;
+        const parsed = JSON.parse((raw as any).annotations); // First JSON.parse
+
+        let finalAnnotations: any[] = [];
+
+        // Check if parsed.annotations exists and is a string, then parse it again
+        if (typeof parsed?.annotations === 'string') {
+          try {
+            const innerParsed = JSON.parse(parsed.annotations); // Second JSON.parse
+            if (Array.isArray(innerParsed?.objects)) {
+              finalAnnotations = innerParsed.objects;
+            } else if (Array.isArray(innerParsed)) {
+              finalAnnotations = innerParsed;
+            }
+          } catch (e) {
+            console.error('Failed to parse inner annotations string:', e);
+          }
+        } else if (Array.isArray(parsed?.objects)) {
+          finalAnnotations = parsed.objects;
         } else if (Array.isArray(parsed)) {
-          annotations = parsed;
-        } else {
-          annotations = [];
+          finalAnnotations = parsed;
         }
+
+        annotations = finalAnnotations; // Assign to the main annotations variable
       } catch {
         annotations = [];
       }
@@ -194,6 +223,8 @@ export async function fetchAnnotationsFromServer(params: {
         annotations = [];
       }
     }
+
+    console.log('Parsed annotations for import:', annotations);
 
     const bundle: AnnotationBundlePayload = {
       studyKey,
@@ -222,6 +253,8 @@ export function importArrowAnnotations(
   if (!re || !vp || !el) return;
 
   for (const ann of bundle.annotations) {
+    console.log('Importing annotation:', ann);
+    console.log('Viewport Image ID (if available):', vp?.getCurrentImageId?.());
     annotation.state.addAnnotation(ann as any, el);
   }
   re?.render();

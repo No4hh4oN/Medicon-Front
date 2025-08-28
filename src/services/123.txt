@@ -1,56 +1,24 @@
-annotation.ts:145  GET http://localhost:8080/api/v1/annotations/studies/21/series/1 404 (Not Found)
-fetchAnnotationsFromServer @ annotation.ts:145
-onLoad @ Toolbar.tsx:88
-executeDispatch @ react-dom_client.js?v=a46ac732:11736
-runWithFiberInDEV @ react-dom_client.js?v=a46ac732:1485
-processDispatchQueue @ react-dom_client.js?v=a46ac732:11772
-(anonymous) @ react-dom_client.js?v=a46ac732:12182
-batchedUpdates$1 @ react-dom_client.js?v=a46ac732:2628
-dispatchEventForPluginEventSystem @ react-dom_client.js?v=a46ac732:11877
-dispatchEvent @ react-dom_client.js?v=a46ac732:14792
-dispatchDiscreteEvent @ react-dom_client.js?v=a46ac732:14773
-<button>
-exports.jsxDEV @ react_jsx-dev-runtime.js?v=a46ac732:250
-Toolbar @ Toolbar.tsx:117
-react_stack_bottom_frame @ react-dom_client.js?v=a46ac732:17424
-renderWithHooksAgain @ react-dom_client.js?v=a46ac732:4281
-renderWithHooks @ react-dom_client.js?v=a46ac732:4217
-updateFunctionComponent @ react-dom_client.js?v=a46ac732:6619
-beginWork @ react-dom_client.js?v=a46ac732:7654
-runWithFiberInDEV @ react-dom_client.js?v=a46ac732:1485
-performUnitOfWork @ react-dom_client.js?v=a46ac732:10868
-workLoopSync @ react-dom_client.js?v=a46ac732:10728
-renderRootSync @ react-dom_client.js?v=a46ac732:10711
-performWorkOnRoot @ react-dom_client.js?v=a46ac732:10330
-performSyncWorkOnRoot @ react-dom_client.js?v=a46ac732:11635
-flushSyncWorkAcrossRoots_impl @ react-dom_client.js?v=a46ac732:11536
-flushSyncWork$1 @ react-dom_client.js?v=a46ac732:10567
-scheduleRefresh @ react-dom_client.js?v=a46ac732:372
-p.scheduleRefresh @ renderer.js:994
-(anonymous) @ @react-refresh:228
-performReactRefresh @ @react-refresh:217
-(anonymous) @ @react-refresh:608
-<Toolbar>
-exports.jsxDEV @ react_jsx-dev-runtime.js?v=a46ac732:250
-DicomViewer @ DicomViewer.tsx:141
-react_stack_bottom_frame @ react-dom_client.js?v=a46ac732:17424
-renderWithHooksAgain @ react-dom_client.js?v=a46ac732:4281
-renderWithHooks @ react-dom_client.js?v=a46ac732:4217
-updateFunctionComponent @ react-dom_client.js?v=a46ac732:6619
-beginWork @ react-dom_client.js?v=a46ac732:7654
-runWithFiberInDEV @ react-dom_client.js?v=a46ac732:1485
-performUnitOfWork @ react-dom_client.js?v=a46ac732:10868
-workLoopSync @ react-dom_client.js?v=a46ac732:10728
-renderRootSync @ react-dom_client.js?v=a46ac732:10711
-performWorkOnRoot @ react-dom_client.js?v=a46ac732:10330
-performSyncWorkOnRoot @ react-dom_client.js?v=a46ac732:11635
-flushSyncWorkAcrossRoots_impl @ react-dom_client.js?v=a46ac732:11536
-flushSyncWork$1 @ react-dom_client.js?v=a46ac732:10567
-scheduleRefresh @ react-dom_client.js?v=a46ac732:372
-p.scheduleRefresh @ renderer.js:994
-(anonymous) @ @react-refresh:228
-performReactRefresh @ @react-refresh:217
-(anonymous) @ @react-refresh:608Understand this error
-Toolbar.tsx:96 Annotation 불러오기 중 오류 발생: Error: Annotation 불러오기 실패: 404 - 
-    at fetchAnnotationsFromServer (annotation.ts:147:15)
-    at async onLoad (Toolbar.tsx:88:24)
+Current Image ID: wadouri:http://localhost:8080/api/v1/dicom/studies/21/series/1/images/1
+Toolbar.tsx:137 Fetching annotations with: {studyKey: '21', seriesKey: '1', imageKey: '1'}
+annotation.ts:134 Fetching annotations from URL: http://localhost:8080/api/v1/annotations/studies/21/series/1/images/1
+annotation.ts:137 Annotation fetch response: Response {type: 'cors', url: 'http://localhost:8080/api/v1/annotations/studies/21/series/1/images/1', redirected: false, status: 200, ok: true, …}
+annotation.ts:212 Parsed annotations for import: []length: 0[[Prototype]]: Array(0)
+
+
+
+
+
+
+백엔드가 주는 값
+[
+  {
+    "annoImageId": 3,
+    "studyKey": 21,
+    "seriesKey": 1,
+    "imageKey": 1,
+    "frameNo": -1,
+    "annotations": "{\"studyKey\":21,\"seriesKey\":1,\"imageKey\":1,\"frameNo\":-1,\"annotations\":\"{\\\"version\\\":\\\"5.3.0\\\",\\\"objects\\\":[{\\\"annotationUID\\\":\\\"11e71ea0-7cfc-4abb-91e0-b60fadcffe20\\\",\\\"toolName\\\":\\\"ArrowAnnotate\\\",\\\"referencedImageId\\\":\\\"wadouri:http://localhost:8080/api/v1/dicom/studies/21/series/1/images/1\\\",\\\"data\\\":{\\\"text\\\":\\\"\\\",\\\"handles\\\":{\\\"points\\\":[[176.18513166932908,105.10209102935302,0],[175.4265235223642,254.54789598142972,0]],\\\"activeHandleIndex\\\":null,\\\"arrowFirst\\\":true,\\\"textBox\\\":{\\\"hasMoved\\\":false,\\\"worldPosition\\\":[0,0,0],\\\"worldBoundingBox\\\":{\\\"topLeft\\\":[0,0,0],\\\"topRight\\\":[0,0,0],\\\"bottomLeft\\\":[0,0,0],\\\"bottomRight\\\":[0,0,0]}}},\\\"label\\\":\\\"\\\",\\\"cachedStats\\\":{}},\\\"metadata\\\":{\\\"toolName\\\":\\\"ArrowAnnotate\\\",\\\"viewPlaneNormal\\\":[0,0,-1],\\\"viewUp\\\":[0,-1,0],\\\"referencedImageId\\\":\\\"wadouri:http://localhost:8080/api/v1/dicom/studies/21/series/1/images/1\\\",\\\"cameraFocalPoint\\\":[177.892,215.92999999999998,0],\\\"sliceIndex\\\":0,\\\"planeRestriction\\\":{\\\"point\\\":[176.18513166932908,105.10209102935302,0],\\\"inPlaneVector1\\\":[0,-1,0],\\\"inPlaneVector2\\\":{\\\"0\\\":1,\\\"1\\\":0,\\\"2\\\":0}}}}]}\",\"createdBy\":\"이남현\",\"createdAt\":\"2025-08-28 01:31:42\"}",
+    "createdBy": "이남현",
+    "createdAt": "2025-08-27 12:30:07"
+  }
+]
