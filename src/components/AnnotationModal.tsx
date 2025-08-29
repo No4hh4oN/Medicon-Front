@@ -79,6 +79,7 @@ type CompareViewProps = { side: "left" | "right"; bundleJson?: string | null };
 
 function AnnotationPreview({ side, bundleJson }: CompareViewProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
+  const ranRef = useRef(false);
 
   // 재렌더에도 불변이도록 useRef로 고유 ID 고정
   const engineId = useRef(`anno-prev-engine-${side}-${Math.random().toString(36).slice(2)}`).current;
@@ -86,6 +87,8 @@ function AnnotationPreview({ side, bundleJson }: CompareViewProps) {
   const toolGroupId = useRef(`anno-prev-tg-${side}-${Math.random().toString(36).slice(2)}`).current;
 
   useEffect(() => {
+    if (ranRef.current) return;
+    ranRef.current = true;
     let re: RenderingEngine | null = null;
 
     (async () => {
