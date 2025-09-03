@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { startTransition } from "react";
 import * as React from "react";
 import { useState, useEffect, useMemo, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,12 +14,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-// ★ 모달 분리 파일 임포트
 import AnnotationModal, { type AnnotationModalData } from "../AnnotationModal";
-// ★ 시간 포맷 유틸 임포트 (경로는 프로젝트에 맞게)
 import { normalizeToYMDHMS } from "../../DateFormat";
 
-/** ───────────────── 타입 ───────────────── **/
 type ActionType = "C" | "I" | "U" | "D" | "R" | string;
 
 type LogRaw = {
@@ -26,7 +24,7 @@ type LogRaw = {
   studyKey: number;
   userId: string;
   commentId: number | null;
-  commentType: string; // 고정 아님
+  commentType: string;
   originalTitle: string | null;
   originalContent: string | null;
   newTitle: string | null;
@@ -37,11 +35,10 @@ type LogRaw = {
 };
 
 type LogRow = Omit<LogRaw, "createdAt" | "updatedAt"> & {
-  createdAt: string;  // "YYYY-MM-DD HH:mm:ss"
-  updatedAt: string;  // "YYYY-MM-DD HH:mm:ss" | "-"
+  createdAt: string;
+  updatedAt: string;
 };
 
-/** ───────────────── 유틸 ───────────────── **/
 function getCommentTypeBadge(t: string) {
   const map: Record<string, { text: string; className: string }> = {
     COMMENT:    { text: "COMMENT",    className: "bg-indigo-100 text-indigo-800" },
@@ -66,39 +63,42 @@ function getActionTypeInfo(actionType: ActionType) {
     default:  return { text: actionType, className: "bg-gray-100 text-gray-800" };
   }
 }
-
 const isAnnotationType = (t: string) => (t || "").toUpperCase() === "ANNOTATION";
 
-/** ───────────────── 상수 ───────────────── **/
 const PAGE_SIZE = 20;
 
-/** ───────────────── 페이지 ───────────────── **/
 const LogsView: React.FC = () => {
-  // 선택 기준
+  const navigate = useNavigate();
+
   const [actionType, setActionType] = useState<string>("ALL");
   const [selCommentType, setSelCommentType] = useState<string>("ALL");
   const [selUserId, setSelUserId] = useState<string>("ALL");
   const [selStudyKey, setSelStudyKey] = useState<string>("ALL");
   const [selCommentId, setSelCommentId] = useState<string>("ALL");
 
-  // 데이터
   const [rows, setRows] = useState<LogRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [err,   setErr] = useState<string | null>(null);
 
-  // 페이지네이션 상태
-  const [page, setPage] = useState<number>(1);        // 1부터 시작 (백엔드와 일치)
+  const [page, setPage] = useState<number>(1);
   const [hasMore, setHasMore] = useState<boolean>(true);
 
-  // 모달
   const [modalOpen, setModalOpen] = useState(false);
   const [modalData, setModalData] = useState<AnnotationModalData | null>(null);
 
-  // 옵션
   const commentTypeOptions = useMemo(() => {
     const set = new Set<string>(); rows.forEach(r => set.add(r.commentType));
     return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [rows]);
+  }, [rows]);*/
+  const commentTypeOptions = useMemo(() => {
+  const set = new Set<string>();
+  rows.forEach(r => {
+    if (typeof r.commentType === 'string') {
+      set.add(r.commentType);
+    }
+  });
+  return Array.from(set).sort((a, b) => a.localeCompare(b));
+}, [rows]);
 
   const userIdOptions = useMemo(() => {
     const set = new Set<string>(); rows.forEach(r => set.add(r.userId));
@@ -120,7 +120,7 @@ const LogsView: React.FC = () => {
     });
   }, [rows]);
 
-  // 필터링 (※ 혹시 서버에서 'R'이 와도 프런트에서 한 번 더 제외)
+  // 기존 페이지는 조회(R) 로그 제외
   const filtered = useMemo(() => {
     return rows.filter((r) => {
       if (r.actionType === "R") return false; // 조회 로그 제외
@@ -139,7 +139,6 @@ const LogsView: React.FC = () => {
     });
   }, [rows, actionType, selCommentType, selUserId, selStudyKey, selCommentId]);
 
-  // ───────── 데이터 로딩 (페이지/사이즈 기반) ─────────
   const fetchLogs = useCallback(
     async (append: boolean, targetPage: number) => {
       setLoading(true); setErr(null);
@@ -163,8 +162,6 @@ const LogsView: React.FC = () => {
         } else {
           startTransition(() => setRows(normalized));
         }
-
-        // 다음 페이지 존재 여부 판단
         setHasMore(normalized.length === PAGE_SIZE);
       } catch (e: any) {
         setErr(e?.message ?? "로그를 불러오지 못했습니다.");
@@ -176,21 +173,12 @@ const LogsView: React.FC = () => {
     []
   );
 
-  // 첫 로딩 (1페이지)
   useEffect(() => {
     setPage(1);
     setHasMore(true);
     void fetchLogs(false, 1);
   }, [fetchLogs]);
 
-  // 새로고침: 페이지/hasMore 초기화 후 1페이지 재호출 (소프트 리프레시)
-  const onRefresh = useCallback(() => {
-    setPage(1);
-    setHasMore(true);
-    void fetchLogs(false, 1);
-  }, [fetchLogs]);
-
-  // 초기화 (필터만 리셋)
   const resetFilters = useCallback(() => {
     setActionType("ALL");
     setSelCommentType("ALL");
@@ -199,7 +187,6 @@ const LogsView: React.FC = () => {
     setSelCommentId("ALL");
   }, []);
 
-  // 더 불러오기
   const loadMore = useCallback(() => {
     if (loading || !hasMore) return;
     const next = page + 1;
@@ -207,7 +194,6 @@ const LogsView: React.FC = () => {
     void fetchLogs(true, next);
   }, [loading, hasMore, page, fetchLogs]);
 
-  // 모달 열기 (ANNOTATION 행의 “자세히 보기” 클릭 시)
   const openAnnotationModal = (log: LogRow) => {
     setModalData({
       logId: log.logId,
@@ -217,9 +203,9 @@ const LogsView: React.FC = () => {
       createdAt: log.createdAt,
       actionType: log.actionType,
       originalTitle: log.originalTitle,
-      originalContent: log.originalContent, // ← 왼쪽
+      originalContent: log.originalContent,
       newTitle: log.newTitle,
-      newContent: log.newContent,           // ← 오른쪽
+      newContent: log.newContent,
     });
     setModalOpen(true);
   };
@@ -234,7 +220,6 @@ const LogsView: React.FC = () => {
         <CardContent className="p-6 flex-1 flex flex-col gap-4 overflow-y-auto">
           {/* 선택 기준 */}
           <div className="grid grid-cols-1 md:grid-cols-6 gap-3 items-center">
-            {/* 액션 타입 */}
             <Select value={actionType} onValueChange={setActionType}>
               <SelectTrigger className="w-full bg-neutral-800 border-neutral-700">
                 <SelectValue placeholder="액션" />
@@ -248,7 +233,6 @@ const LogsView: React.FC = () => {
               </SelectContent>
             </Select>
 
-            {/* Comment Type */}
             <Select value={selCommentType} onValueChange={setSelCommentType}>
               <SelectTrigger className="w-full bg-neutral-800 border-neutral-700">
                 <SelectValue placeholder="Comment Type" />
@@ -267,7 +251,6 @@ const LogsView: React.FC = () => {
               </SelectContent>
             </Select>
 
-            {/* 사용자 ID */}
             <Select value={selUserId} onValueChange={setSelUserId}>
               <SelectTrigger className="w-full bg-neutral-800 border-neutral-700">
                 <SelectValue placeholder="사용자 ID" />
@@ -286,7 +269,6 @@ const LogsView: React.FC = () => {
               </SelectContent>
             </Select>
 
-            {/* Study Key */}
             <Select value={selStudyKey} onValueChange={setSelStudyKey}>
               <SelectTrigger className="w-full bg-neutral-800 border-neutral-700">
                 <SelectValue placeholder="Study Key" />
@@ -305,7 +287,6 @@ const LogsView: React.FC = () => {
               </SelectContent>
             </Select>
 
-            {/* Comment ID */}
             <Select value={selCommentId} onValueChange={setSelCommentId}>
               <SelectTrigger className="w-full bg-neutral-800 border-neutral-700">
                 <SelectValue placeholder="Comment ID" />
@@ -324,27 +305,27 @@ const LogsView: React.FC = () => {
               </SelectContent>
             </Select>
 
-            {/* 버튼들 */}
+            {/* ▶ 여기! 조회로그 페이지로 이동 */}
             <div className="flex gap-2">
-              <Button onClick={onRefresh} className="flex-1 bg-sky-500 hover:bg-sky-600" disabled={loading}>
-                새로고침
+              <Button
+                onClick={() => navigate("/logsViewReadOnly")}
+                className="flex-1 bg-sky-500 hover:bg-sky-600"
+              >
+                조회로그
               </Button>
-              <Button onClick={resetFilters} variant="outline" className="flex-1 border-neutral-700 text-neutral-200">
+              <Button
+                onClick={resetFilters}
+                variant="outline"
+                className="flex-1 border-neutral-700 text-neutral-200"
+              >
                 초기화
               </Button>
             </div>
           </div>
 
-          {/* 테이블 */}
-          <div
-            className={`relative overflow-x-auto shadow-md sm:rounded-lg transition-opacity duration-200 ${
-              loading ? "opacity-90" : "opacity-100"
-            }`}
-          >
+          <div className={`relative overflow-x-auto shadow-md sm:rounded-lg transition-opacity duration-200 ${loading ? "opacity-90" : "opacity-100"}`}>
             <div className="px-6 py-4 bg-white/5 flex items-center gap-3">
-              {loading && (
-                <span className="inline-block size-2 rounded-full bg-sky-400 animate-pulse" aria-hidden />
-              )}
+              {loading && <span className="inline-block size-2 rounded-full bg-sky-400 animate-pulse" aria-hidden />}
               {err ? (
                 <p className="text-red-400">에러: {err}</p>
               ) : (
@@ -359,6 +340,7 @@ const LogsView: React.FC = () => {
                 <tr>
                   <th className="px-6 py-3">ID</th>
                   <th className="px-6 py-3">사용자</th>
+                  <th className="px-6 py-3">Study Key</th>
                   <th className="px-6 py-3">타입</th>
                   <th className="px-6 py-3">액션</th>
                   <th className="px-6 py-3">변경 내용</th>
@@ -387,31 +369,25 @@ const LogsView: React.FC = () => {
                           transition={{ duration: 0.18 }}
                           className="bg-neutral-900 hover:bg-neutral-800/50"
                         >
-                          {/* ID */}
                           <td className="px-6 py-4 font-medium text-neutral-100 whitespace-nowrap break-keep min-w-[56px]">
                             {log.logId}
                           </td>
-
-                          {/* 사용자 */}
                           <td className="px-6 py-4 whitespace-nowrap break-keep min-w-[96px]">
                             {log.userId}
                           </td>
-
-                          {/* 타입 뱃지 */}
+                          <td className="px-6 py-4 whitespace-nowrap break-keep min-w-[100px]">
+                            {log.studyKey}
+                          </td>
                           <td className="px-6 py-4 whitespace-nowrap break-keep min-w-[120px]">
                             <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold leading-none whitespace-nowrap break-keep ${cBadge.className}`}>
                               {cBadge.text}
                             </span>
                           </td>
-
-                          {/* 액션 뱃지 */}
                           <td className="px-6 py-4 whitespace-nowrap break-keep min-w-[96px]">
                             <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold leading-none whitespace-nowrap break-keep ${aBadge.className}`}>
                               {aBadge.text}
                             </span>
                           </td>
-
-                          {/* 변경 내용 */}
                           <td className="px-6 py-4">
                             {annotationRow ? (
                               <button
@@ -439,8 +415,6 @@ const LogsView: React.FC = () => {
                               <span className="text-neutral-100 break-keep">{newFull || originalFull}</span>
                             )}
                           </td>
-
-                          {/* 시간 */}
                           <td className="px-6 py-4 whitespace-nowrap break-keep min-w-[144px]">
                             {log.createdAt}
                           </td>
@@ -462,19 +436,14 @@ const LogsView: React.FC = () => {
               </tbody>
             </table>
 
-            {/* 소프트 로딩 오버레이 */}
             {loading && (
               <div className="pointer-events-none absolute inset-0 bg-neutral-900/20 backdrop-blur-[1px]" />
             )}
           </div>
 
-          {/* 더 불러오기 버튼 */}
           <div className="flex justify-center my-4">
             {hasMore && !loading && !err && (
-              <Button
-                onClick={loadMore}
-                className="bg-neutral-700 hover:bg-neutral-600"
-              >
+              <Button onClick={loadMore} className="bg-neutral-700 hover:bg-neutral-600">
                 더 불러오기
               </Button>
             )}
@@ -482,7 +451,6 @@ const LogsView: React.FC = () => {
         </CardContent>
       </Card>
 
-      {/* 모달 분리 파일 사용 */}
       <AnnotationModal
         open={!!modalOpen && !!modalData}
         data={modalData as AnnotationModalData}

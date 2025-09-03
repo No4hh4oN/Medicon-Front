@@ -6,6 +6,14 @@ import useSeriesStack from '../../hooks/useSeriesStack';
 import { fetchStudy } from '../../services/dicomApi';
 import { getOverlayHost, rebuildGridAndBindTools } from '../../layouts/grid';
 import Toolbar from './Toolbar';
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 type Layout = {
     rows: number,
@@ -142,64 +150,74 @@ export default function DicomViewer({ studyKey }: Props) {
 
 
     return (
-        <div style={{ display: 'grid', gridTemplateRows: 'auto 1fr', height: '100%' }}>
-            {/* 백엔드 입력/로딩 UI */}
-            <div style={{ padding: 8, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                {/* 
-                <input
-                    style={{ width: 160 }}
-                    value={startSeriesKey}
-                    onChange={(e) => setStartSeriesKey(e.target.value)}
-                    placeholder="seriesKey"
-                />*/}
-                <select
-                    value={`${layout.rows}x${layout.cols}`}
-                    onChange={(e) => {
-                        const [r, c] = e.target.value.split('x').map(Number);
-                        applyLayout(r, c);
-                    }}
-                >
-                    <option value={"1x1"}>1x1</option>
-                    <option value={"2x2"}>2x2</option>
-                    <option value={"3x3"}>3x3</option>
-                </select>
-                {/*
-                <button onClick={() => loadFromStart()}
-                    disabled={loading || String(startSeriesKey).trim() === ''}>불러오기</button> */}
-                <span style={{ opacity: 0.7 }}>좌 : 윈도우레벨 / ctrl+좌 : 팬 / 우: 줌 / 휠 : 스택 스크롤</span>
-                <Toolbar
-                    toolGroupId={toolGroupId}
-                    renderingEngineId={renderingEngineId}
-                    viewportId={activeViewportId ?? viewportId[0]}
-                    studyKey={studyKey}
-                    seriesKey={startSeriesKey}
-                />
-            </div>
+  <div className="min-h-screen bg-neutral-900 text-neutral-100 flex-1 flex flex-col">
+    <Card className="m-4 sm:m-6 md:m-8 bg-neutral-900/60 border-neutral-800 shadow-none flex-1 flex flex-col">
+      <CardHeader className="border-b border-neutral-800">
+        <CardTitle>MEDICONNECT 뷰어</CardTitle>
+      </CardHeader>
 
-            {/* 뷰포트 */}
-            <div
-                ref={containerRef}
-                onContextMenu={(e) => e.preventDefault()}
-                style={{
-                    width: '100%',
-                    height: '100%',
-                    background: '#111',
-                    display: 'grid',
-                    gridTemplateRows: `repeat(${layout.rows}, 1fr)`,
-                    gridTemplateColumns: `repeat(${layout.cols}, 1fr)`,
-                    gap: '2px',
-                }}
-            />
+      <CardContent className="p-4 sm:p-6 flex-1 flex flex-col gap-4 overflow-hidden">
+        {/* 상단 컨트롤바 */}
+        <div className="flex flex-col md:flex-row items-center gap-3">
+          {/* 레이아웃 선택 */}
+          <Select
+            value={`${layout.rows}x${layout.cols}`}
+            onValueChange={(val) => {
+              const [r, c] = val.split("x").map(Number);
+              applyLayout(r, c);
+            }}
+          >
+            <SelectTrigger className="w-full md:w-[120px] bg-neutral-800 border-neutral-700">
+              <SelectValue placeholder="레이아웃" />
+            </SelectTrigger>
+            <SelectContent className="bg-neutral-800 border-neutral-700 text-neutral-100">
+              <SelectItem value="1x1">1x1</SelectItem>
+              <SelectItem value="2x2">2x2</SelectItem>
+              <SelectItem value="3x3">3x3</SelectItem>
+            </SelectContent>
+          </Select>
 
-            {/* 각 뷰포트 메타데이터 렌더 */}
-            {containerRef.current &&
-                Object.entries(firstImgByVp).map(([vpId, imgId]) => {
-                    const host = getOverlayHost(containerRef.current!, vpId);
-                    return host
-                        ? createPortal(<MetaData firstImageId={imgId} />, host, `meta-${vpId}`)
-                        : null;
-                })
-            }
+          <span className="text-sm text-neutral-400 flex-1">
+            좌: 윈도우레벨 / Ctrl+좌: 팬 / 우: 줌 / 휠: 스택 스크롤
+          </span>
+
+          <Toolbar
+            toolGroupId={toolGroupId}
+            renderingEngineId={renderingEngineId}
+            viewportId={activeViewportId ?? viewportId[0]}
+            studyKey={studyKey}
+            seriesKey={startSeriesKey}
+          />
         </div>
-    );
+
+        {/* 뷰포트 그리드 */}
+        <div
+  ref={containerRef}
+  onContextMenu={(e) => e.preventDefault()}
+  className="
+    w-full h-full min-h-[1080px] grid overflow-hidden
+    rounded-xl border border-neutral-800
+    bg-neutral-800           /* ← 갭(구분선) 색 */
+    gap-[2px]                
+  "
+  style={{
+    gridTemplateRows: `repeat(${layout.rows}, 1fr)`,
+    gridTemplateColumns: `repeat(${layout.cols}, 1fr)`,
+  }}
+/>
+
+      </CardContent>
+    </Card>
+
+    {/* 각 뷰포트 메타데이터 오버레이 */}
+    {containerRef.current &&
+      Object.entries(firstImgByVp).map(([vpId, imgId]) => {
+        const host = getOverlayHost(containerRef.current!, vpId);
+        return host
+          ? createPortal(<MetaData firstImageId={imgId} />, host, `meta-${vpId}`)
+          : null;
+      })}
+  </div>
+);
+
 }
