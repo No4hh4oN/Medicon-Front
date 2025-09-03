@@ -254,7 +254,7 @@ const AnnotationModal: React.FC<AnnotationModalProps> = ({ open, data, onClose }
             </div>
           </div>
         )}
-{/* 
+
         
         <div className="px-6 pb-6 pt-4">
           <div className="text-neutral-400 text-sm mb-2">내용(JSON)</div>
@@ -272,7 +272,7 @@ const AnnotationModal: React.FC<AnnotationModalProps> = ({ open, data, onClose }
               </pre>
             </div>
           </div>
-        </div>*/}
+        </div>
       </div>
     </div>
   );

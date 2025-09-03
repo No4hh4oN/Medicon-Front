@@ -57,45 +57,36 @@ export async function saveAnnotationsToServer(payload: AnnotationBundlePayload) 
     }
   }
 
-  const { studyKey, seriesKey, currentImageId, annotations } = payload; // Destructure currentImageId
-
   // 1. referencedImageId를 기준으로 주석들을 그룹화합니다.
-  const groupedByImageId: Record<string, ArrowAnnotationData[]> = {};
-  if (annotations.length > 0) {
-    annotations.reduce((acc, ann) => {
-      const imageId = ann.referencedImageId;
-      if (!imageId) {
-        console.warn('Annotation without referencedImageId found, skipping:', ann);
-        return acc;
-      }
-      if (!acc[imageId]) {
-        acc[imageId] = [];
-      }
-      acc[imageId].push(ann);
+  const groupedByImageId = payload.annotations.reduce((acc, ann) => {
+    const imageId = ann.referencedImageId;
+    if (!imageId) {
+      console.warn('Annotation without referencedImageId found, skipping:', ann);
       return acc;
-    }, groupedByImageId);
-  } else if (currentImageId) {
-    // If no annotations, but currentImageId is provided, prepare an empty entry for it
-    groupedByImageId[currentImageId] = [];
-  }
+    }
+    if (!acc[imageId]) {
+      acc[imageId] = [];
+    }
+    acc[imageId].push(ann);
+    return acc;
+  }, {} as Record<string, ArrowAnnotationData[]>);
 
   // 2. 백엔드 API 형식에 맞는 payload 배열을 생성합니다.
   const backendPayload = Object.entries(groupedByImageId)
-    .map(([imageId, imageAnnotations]) => { // Renamed annotations to imageAnnotations for clarity
+    .map(([imageId, annotations]) => {
       const keys = parseImageIdKeys(imageId);
       if (!keys) return null;
 
       return {
         ...keys,
-        annotations: JSON.stringify({ version: '5.3.0', objects: imageAnnotations }),
+        annotations: JSON.stringify({ version: '5.3.0', objects: annotations }),
         createdAt: new Date().toISOString().slice(0, 19).replace('T', ' '),
       };
     })
     .filter((p): p is NonNullable<typeof p> => p !== null);
 
-  // If backendPayload is still empty after trying to add currentImageId, then there's nothing to send.
   if (backendPayload.length === 0) {
-    console.log('저장할 주석 데이터가 없습니다 (currentImageId도 없음).');
+    console.log('저장할 주석 데이터가 없습니다.');
     return;
   }
 
@@ -111,7 +102,7 @@ export async function saveAnnotationsToServer(payload: AnnotationBundlePayload) 
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payloadItem),
-      credentials: 'include',
+      credentials: 'include', // Add this line
     });
   });
 
@@ -142,7 +133,7 @@ export async function fetchAnnotationsFromServer(params: {
   const url = `${ANNOTATION_API_ROOT}/studies/${studyKey}/series/${seriesKey}/images/${imageKey}`;
   console.log('Fetching annotations from URL:', url);
 
-  const res = await fetch(url, { credentials: 'include' });
+  const res = await fetch(url);
   console.log('Annotation fetch response:', res);
   if (!res.ok) {
     throw new Error(`Annotation 불러오기 실패: ${res.status} - ${res.statusText}`);
