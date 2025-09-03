@@ -87,10 +87,6 @@ const LogsView: React.FC = () => {
   const [modalData, setModalData] = useState<AnnotationModalData | null>(null);
 
   const commentTypeOptions = useMemo(() => {
-    const set = new Set<string>(); rows.forEach(r => set.add(r.commentType));
-    return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [rows]);*/
-  const commentTypeOptions = useMemo(() => {
   const set = new Set<string>();
   rows.forEach(r => {
     if (typeof r.commentType === 'string') {
