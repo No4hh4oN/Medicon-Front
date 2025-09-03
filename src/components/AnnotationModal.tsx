@@ -145,7 +145,7 @@ function AnnotationPreview({ side, bundleJson }: CompareViewProps) {
       await re.render();
 
       importArrowAnnotations(bundle, engineId, viewportId);
-      await re.render();
+      //await re.render();
 
       // 보기 전용
       el!.style.pointerEvents = "none";
@@ -254,8 +254,8 @@ const AnnotationModal: React.FC<AnnotationModalProps> = ({ open, data, onClose }
             </div>
           </div>
         )}
-
-        {/* JSON 텍스트 비교 */}
+{/* 
+        
         <div className="px-6 pb-6 pt-4">
           <div className="text-neutral-400 text-sm mb-2">내용(JSON)</div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -272,7 +272,7 @@ const AnnotationModal: React.FC<AnnotationModalProps> = ({ open, data, onClose }
               </pre>
             </div>
           </div>
-        </div>
+        </div>*/}
       </div>
     </div>
   );
