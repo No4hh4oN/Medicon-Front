@@ -7,7 +7,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Login from "./components/Login.tsx";
 import Viewer from './pages/Viewer.tsx'
 import LogView from './pages/LogView.tsx'
-import Register from './components/register.tsx'
+import Register from './components/Register.tsx'
 import UserInfo from './components/UserInfo.tsx'
 import LogsViewReadOnly from './components/log/LogViewReadOnly.tsx'
 
