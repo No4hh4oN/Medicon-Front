@@ -21,5 +21,6 @@ export interface AnnotationBundlePayload {
   imageIdScope?: 'series' | 'image';
   annotations: ArrowAnnotationData[];
   savedAt: string;                // ISO 문자열
+  currentImageId?: string;        // 현재 뷰포트의 imageId (주석이 없을 때 빈 값 전송용)
 }
 
