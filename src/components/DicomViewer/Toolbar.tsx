@@ -77,24 +77,45 @@ export default function Toolbar({
 
   const onSave = useCallback(async () => {
     try {
+      if (!viewportId) {
+        alert('뷰포트가 준비되지 않았습니다. 먼저 시리즈를 불러오세요.');
+        return;
+      }
+      const re = getRenderingEngine(renderingEngineId);
+      const vp: any = re?.getViewport(viewportId);
+      if (!re || !vp) {
+        alert('렌더링 엔진 또는 뷰포트를 찾을 수 없습니다.');
+        return;
+      }
+      let currentImageId: string | undefined;
+      if (typeof vp.getCurrentImageId === 'function') {
+        currentImageId = vp.getCurrentImageId();
+      } else if (typeof vp.getCurrentImageIdIndex === 'function' && typeof vp.getImageIds === 'function') {
+        const idx = vp.getCurrentImageIdIndex();
+        const ids = vp.getImageIds?.();
+        currentImageId = Array.isArray(ids) ? ids[idx] : undefined;
+      }
+      if (!currentImageId) {
+        alert('현재 이미지 ID를 가져올 수 없습니다.');
+        return;
+      }
+
       const annotations = exportArrowAnnotations();
-      // if (annotations.length === 0) {
-      //   alert('저장할 주석이 없습니다.');
-      //   return;
-      // }
+      
       await saveAnnotationsToServer({
         studyKey,
         seriesKey,
         imageIdScope: 'image',
         annotations,
         savedAt: new Date().toISOString(),
+        currentImageId: currentImageId
       });
       alert('주석이 저장되었습니다.');
     } catch (e: any) {
       console.error('Annotation 저장 중 오류 발생:', e);
       alert(`저장 실패: ${e.message}`);
     }
-  }, [studyKey, seriesKey]);
+  }, [studyKey, seriesKey, viewportId, renderingEngineId]);
 
   const onLoad = useCallback(async () => {
     if (!viewportId) {
