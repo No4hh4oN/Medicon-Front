@@ -1,9 +1,8 @@
-// src/pages/LogsView.tsx
+// src/pages/LogsViewReadOnly.tsx
 import { AnimatePresence, motion } from "framer-motion";
 import { startTransition } from "react";
 import * as React from "react";
 import { useState, useEffect, useMemo, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -67,10 +66,9 @@ const isAnnotationType = (t: string) => (t || "").toUpperCase() === "ANNOTATION"
 
 const PAGE_SIZE = 20;
 
-const LogsView: React.FC = () => {
-  const navigate = useNavigate();
-
-  const [actionType, setActionType] = useState<string>("ALL");
+const LogsViewReadOnly: React.FC = () => {
+  // ✅ 조회 로그 전용: 액션 타입을 'R'으로 고정 (UI는 표시만)
+  const [actionType] = useState<string>("R");
   const [selCommentType, setSelCommentType] = useState<string>("ALL");
   const [selUserId, setSelUserId] = useState<string>("ALL");
   const [selStudyKey, setSelStudyKey] = useState<string>("ALL");
@@ -111,11 +109,10 @@ const LogsView: React.FC = () => {
     });
   }, [rows]);
 
-  // 기존 페이지는 조회(R) 로그 제외
+  // ✅ 조회(R) 로그만 표시
   const filtered = useMemo(() => {
     return rows.filter((r) => {
-      if (r.actionType === "R") return false; // 조회 로그 제외
-      if (actionType     !== "ALL" && r.actionType     !== actionType)     return false;
+      if (r.actionType !== "R") return false; // 조회만
       if (selCommentType !== "ALL" && r.commentType    !== selCommentType) return false;
       if (selUserId      !== "ALL" && r.userId         !== selUserId)      return false;
       if (selStudyKey    !== "ALL" && String(r.studyKey) !== selStudyKey)  return false;
@@ -128,13 +125,13 @@ const LogsView: React.FC = () => {
       }
       return true;
     });
-  }, [rows, actionType, selCommentType, selUserId, selStudyKey, selCommentId]);
+  }, [rows, selCommentType, selUserId, selStudyKey, selCommentId]);
 
   const fetchLogs = useCallback(
     async (append: boolean, targetPage: number) => {
       setLoading(true); setErr(null);
       try {
-        const url = `http://localhost:8080/api/v1/logs/showAll?page=${targetPage}&size=${PAGE_SIZE}`;
+        const url = `http://localhost:8080/api/v1/logs/showViewLog?page=${targetPage}&size=${PAGE_SIZE}`;
         const res = await fetch(url, {
           headers: { Accept: "application/json" },
           credentials: "include",
@@ -170,8 +167,13 @@ const LogsView: React.FC = () => {
     void fetchLogs(false, 1);
   }, [fetchLogs]);
 
+  const onRefresh = useCallback(() => {
+    setPage(1);
+    setHasMore(true);
+    void fetchLogs(false, 1);
+  }, [fetchLogs]);
+
   const resetFilters = useCallback(() => {
-    setActionType("ALL");
     setSelCommentType("ALL");
     setSelUserId("ALL");
     setSelStudyKey("ALL");
@@ -205,22 +207,18 @@ const LogsView: React.FC = () => {
     <div className="bg-neutral-900 text-neutral-100 min-h-screen flex flex-col">
       <Card className="m-4 sm:m-6 md:m-8 bg-neutral-900/60 border-neutral-800 shadow-none flex-1 flex flex-col">
         <CardHeader className="border-b border-neutral-800">
-          <CardTitle>로그 조회</CardTitle>
+          <CardTitle>조회 로그</CardTitle>
         </CardHeader>
 
         <CardContent className="p-6 flex-1 flex flex-col gap-4 overflow-y-auto">
-          {/* 선택 기준 */}
+          {/* 선택 기준 (액션 타입은 '조회(R)' 고정/비활성) */}
           <div className="grid grid-cols-1 md:grid-cols-6 gap-3 items-center">
-            <Select value={actionType} onValueChange={setActionType}>
-              <SelectTrigger className="w-full bg-neutral-800 border-neutral-700">
+            <Select value={actionType} disabled>
+              <SelectTrigger className="w-full bg-neutral-800 border-neutral-700 opacity-70">
                 <SelectValue placeholder="액션" />
               </SelectTrigger>
               <SelectContent className="bg-neutral-800 border-neutral-700 text-neutral-100">
-                <SelectItem value="ALL">액션: 전체</SelectItem>
-                <SelectItem value="C">생성(C)</SelectItem>
-                <SelectItem value="I">추가(I)</SelectItem>
-                <SelectItem value="U">수정(U)</SelectItem>
-                <SelectItem value="D">삭제(D)</SelectItem>
+                <SelectItem value="R">조회(R)</SelectItem>
               </SelectContent>
             </Select>
 
@@ -296,19 +294,11 @@ const LogsView: React.FC = () => {
               </SelectContent>
             </Select>
 
-            {/* ▶ 여기! 조회로그 페이지로 이동 */}
             <div className="flex gap-2">
-              <Button
-                onClick={() => navigate("/logsViewReadOnly")}
-                className="flex-1 bg-sky-500 hover:bg-sky-600"
-              >
-                조회로그
+              <Button onClick={onRefresh} className="flex-1 bg-sky-500 hover:bg-sky-600" disabled={loading}>
+                {loading ? "새로고침..." : "새로고침"}
               </Button>
-              <Button
-                onClick={resetFilters}
-                variant="outline"
-                className="flex-1 border-neutral-700 text-neutral-200"
-              >
+              <Button onClick={resetFilters} variant="outline" className="flex-1 border-neutral-700 text-neutral-200">
                 초기화
               </Button>
             </div>
@@ -391,13 +381,6 @@ const LogsView: React.FC = () => {
                                   <path d="M12.293 4.293a1 1 0 0 1 1.414 0L18 8.586a2 2 0 0 1 0 2.828l-4.293 4.293a1 1 0 0 1-1.414-1.414L14.586 12H4a1 1 0 1 1 0-2h10.586l-2.293-2.293a1 1 0 0 1 0-1.414z" />
                                 </svg>
                               </button>
-                            ) : log.actionType === "U" ? (
-                              <div className="flex flex-col gap-1">
-                                <span className="text-red-400 line-through break-keep">{originalFull}</span>
-                                <span className="text-sky-400 break-keep">{newFull}</span>
-                              </div>
-                            ) : log.actionType === "D" ? (
-                              <span className="text-neutral-500 line-through break-keep">{originalFull}</span>
                             ) : (
                               <span className="text-neutral-100 break-keep">{newFull || originalFull}</span>
                             )}
@@ -447,4 +430,4 @@ const LogsView: React.FC = () => {
   );
 };
 
-export default LogsView;
+export default LogsViewReadOnly;
