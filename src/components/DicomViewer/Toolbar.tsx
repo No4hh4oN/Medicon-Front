@@ -71,10 +71,10 @@ export default function Toolbar({
   const onSave = async () => {
     try {
       const annotations = exportArrowAnnotations();
-      if (annotations.length === 0) {
-        alert('저장할 주석이 없습니다.');
-        return;
-      }
+      // if (annotations.length === 0) {
+      //   alert('저장할 주석이 없습니다.');
+      //   return;
+      // }
       await saveAnnotationsToServer({
         studyKey,
         seriesKey,
