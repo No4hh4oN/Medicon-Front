@@ -43,6 +43,7 @@ export default function MetaData({ firstImageId }: Props) {
     }, [firstImageId]);
 
     if (!info) return null;
+    /*
     return (
         <div style={{
             position: 'absolute', top: 10, left: 10, color: '#fff',
@@ -55,5 +56,27 @@ export default function MetaData({ firstImageId }: Props) {
             <div>{info.modality} · {info.studyDesc} · {info.seriesDesc}</div>
             <div>pxSpacing: {info.pixelSpacing?.join?.('×')} · thick: {info.sliceThickness}</div>
         </div>
-    );
+    );*/
+    return (
+  <div className="absolute top-2 left-2 z-10 pointer-events-none">
+    <div className="
+      font-mono text-xs leading-4 text-neutral-100
+      bg-black/40 backdrop-blur-[2px]
+      border border-neutral-800 rounded-md
+      px-2 py-1.5
+      drop-shadow-[0_0_4px_rgba(0,0,0,0.9)]
+    ">
+      <div>{info.patientID ?? "-"}</div>
+      <div className="truncate max-w-[240px]">{info.patientName ?? "-"}</div>
+      <div>{info.birthDate ?? "-"} {info.sex ?? "-"}</div>
+      <div className="truncate max-w-[280px]">
+        {info.modality ?? "-"} · {info.studyDesc ?? "-"} · {info.seriesDesc ?? "-"}
+      </div>
+      {/*
+      <div>
+        pxSpacing: {spacing} · thick: {info.sliceThickness ?? "-"}mm
+      </div> */}
+    </div>
+  </div>
+);
 }

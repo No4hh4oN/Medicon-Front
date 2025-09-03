@@ -1,11 +1,11 @@
-import { useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
     RenderingEngine,
-    init as coreInit,
+    //init as coreInit,
 } from '@cornerstonejs/core';
-import { init as dicomImageLoaderInit } from '@cornerstonejs/dicom-image-loader';
+//import { init as dicomImageLoaderInit } from '@cornerstonejs/dicom-image-loader';
 import {
-    init as toolsInit,
+    //init as toolsInit,
     addTool,
     ToolGroupManager,
     Enums as toolsEnums,
@@ -15,25 +15,26 @@ import {
     WindowLevelTool,
     ArrowAnnotateTool,
 } from '@cornerstonejs/tools';
+import { ensureCornerstoneReady } from './bootstrap';
 
 const RENDERING_ENGINE_ID = 'rendering-engine';
-const VIEWPORT_ID = 'viewport';
+//const VIEWPORT_ID = 'viewport';
 const TOOLGROUP_ID = 'toolgroup';
+
 
 // 초기화 (core/ tools/ engine/ toolgroup 생성)
 export default function useDicomEngine() {
     const containerRef = useRef<HTMLDivElement | null>(null);
     const engineRef = useRef<RenderingEngine | null>(null);
+    const [isReady, setIsReady] = useState(false);
 
     // 1) Cornerstone 초기화 (앱 생애주기 1회)
     useEffect(() => {
         let mounted = true;
         (async () => {
-            await coreInit();
-            await dicomImageLoaderInit({ maxWebWorkers: 2 });
-            await toolsInit();
+            await ensureCornerstoneReady();
 
-            if (!mounted || !containerRef.current) return;
+            if (!mounted) return;
 
             // 렌더링 엔진 & 뷰포트
             const re = new RenderingEngine(RENDERING_ENGINE_ID);
@@ -56,7 +57,7 @@ export default function useDicomEngine() {
             tg.addTool(StackScrollTool.toolName);
             tg.addTool(WindowLevelTool.toolName);
             tg.addTool(ArrowAnnotateTool.toolName);
-            tg.addViewport(VIEWPORT_ID, RENDERING_ENGINE_ID);
+            //tg.addViewport(VIEWPORT_ID, RENDERING_ENGINE_ID);
 
             // 바인딩 (좌: 윈도우레벨 / 우: 줌 / Ctrl+좌: 팬 / 휠 : 스택)
             tg.setToolActive(WindowLevelTool.toolName, {
@@ -86,6 +87,7 @@ export default function useDicomEngine() {
                 changeTextCallback: () => prompt('주석 수정:') ?? '',
             })
 
+            setIsReady(true);
         })();
 
         return () => {
@@ -96,6 +98,9 @@ export default function useDicomEngine() {
                 console.warn('렌더링 엔진 정리 중 오류 발생:', err);
             }
             engineRef.current = null;
+
+            // try { ToolGroupManager.destroyToolGroup(TOOLGROUP_ID);} catch{}
+            // 뷰어 생애주기에 맞춰 툴그룹 지우려면 주석해제
         };
     }, []);
 
@@ -103,7 +108,8 @@ export default function useDicomEngine() {
         containerRef,
         engineRef,
         toolGroupId: TOOLGROUP_ID,
-        viewportId: VIEWPORT_ID,
+        //viewportId: VIEWPORT_ID,
         renderingEngineId: RENDERING_ENGINE_ID,
+        isReady,
      };
 }
