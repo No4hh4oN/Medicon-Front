@@ -133,7 +133,7 @@ export async function fetchAnnotationsFromServer(params: {
   const url = `${ANNOTATION_API_ROOT}/studies/${studyKey}/series/${seriesKey}/images/${imageKey}`;
   console.log('Fetching annotations from URL:', url);
 
-  const res = await fetch(url);
+  const res = await fetch(url, { credentials: 'include' });
   console.log('Annotation fetch response:', res);
   if (!res.ok) {
     throw new Error(`Annotation 불러오기 실패: ${res.status} - ${res.statusText}`);
