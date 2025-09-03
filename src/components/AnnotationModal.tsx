@@ -145,6 +145,7 @@ function AnnotationPreview({ side, bundleJson }: CompareViewProps) {
       await re.render();
 
       importArrowAnnotations(bundle, engineId, viewportId);
+      await re.render();
 
       // 보기 전용
       el!.style.pointerEvents = "none";

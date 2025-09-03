@@ -150,10 +150,10 @@ export default function DicomViewer({ studyKey }: Props) {
 
 
     return (
-  <div className="min-h-screen bg-neutral-900 text-neutral-100 flex flex-col">
+  <div className="min-h-screen bg-neutral-900 text-neutral-100 flex-1 flex flex-col">
     <Card className="m-4 sm:m-6 md:m-8 bg-neutral-900/60 border-neutral-800 shadow-none flex-1 flex flex-col">
       <CardHeader className="border-b border-neutral-800">
-        <CardTitle>PACS+ 뷰어</CardTitle>
+        <CardTitle>MEDICONNECT 뷰어</CardTitle>
       </CardHeader>
 
       <CardContent className="p-4 sm:p-6 flex-1 flex flex-col gap-4 overflow-hidden">
@@ -187,7 +187,6 @@ export default function DicomViewer({ studyKey }: Props) {
             viewportId={activeViewportId ?? viewportId[0]}
             studyKey={studyKey}
             seriesKey={startSeriesKey}
-            compact={false}
           />
         </div>
 
@@ -196,7 +195,7 @@ export default function DicomViewer({ studyKey }: Props) {
   ref={containerRef}
   onContextMenu={(e) => e.preventDefault()}
   className="
-    w-full h-full grid overflow-hidden
+    w-full h-full min-h-[1080px] grid overflow-hidden
     rounded-xl border border-neutral-800
     bg-neutral-800           /* ← 갭(구분선) 색 */
     gap-[2px]                

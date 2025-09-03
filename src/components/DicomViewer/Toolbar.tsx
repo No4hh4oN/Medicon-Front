@@ -179,13 +179,13 @@ export default function Toolbar({
       <div className="mx-1 h-5 w-px bg-neutral-800" />
 
       {/* 저장 */}
-      <Button size="sm" variant="ghost" onClick={onSave} className="text-neutral-200 hover:bg-neutral-800">
+      <Button size="sm"  onClick={onSave} className="text-neutral-200 hover:bg-neutral-800">
         <Save className="h-4 w-4" />
         <span className="ml-2">주석 저장</span>
       </Button>
 
       {/* 불러오기 */}
-      <Button size="sm" variant="ghost" onClick={onLoad} className="text-neutral-200 hover:bg-neutral-800">
+      <Button size="sm" onClick={onLoad} className="text-neutral-200 hover:bg-neutral-800">
         <FolderOpen className="h-4 w-4" />
         <span className="ml-2">주석 불러오기</span>
       </Button>
@@ -193,9 +193,9 @@ export default function Toolbar({
       {/* 모두 삭제 */}
       <Button
         size="sm"
-        variant="ghost"
+    
         onClick={onClear}
-        className="text-red-300 hover:bg-red-500/10 hover:text-red-200"
+        className="text-neutral-300 hover:bg-red-500/10 hover:text-red-200"
       >
         <Trash2 className="h-4 w-4" />
         <span className="ml-2">모두 삭제</span>
