@@ -5,7 +5,7 @@ import {
   WindowLevelTool,
   PanTool,
   ZoomTool,
-  annotation, // ← 위로 올려도 됨
+  annotation,
 } from '@cornerstonejs/tools';
 import { getRenderingEngine } from '@cornerstonejs/core';
 import {
@@ -15,13 +15,15 @@ import {
   saveAnnotationsToServer,
 } from '@/services/annotation';
 import type { AnnotationBundlePayload } from '@/types/annotation';
+import { Button } from '@/components/ui/button';
+import { PencilLine, Save, FolderOpen, Trash2 } from 'lucide-react';
 
 interface Props {
-  toolGroupId?: string,
-  studyKey: string,
-  seriesKey?: string, // DicomViewer에서 필수가 아님
-  renderingEngineId: string,
-  viewportId: string | null, // 처음에는 null일 수 있음
+  toolGroupId?: string;
+  studyKey: string;
+  seriesKey?: string;
+  renderingEngineId: string;
+  viewportId: string | null;
 }
 
 export default function Toolbar({
@@ -33,9 +35,13 @@ export default function Toolbar({
 }: Props) {
   const [annotating, setAnnotating] = useState(false);
 
-  const toggleArrowAnnotate = useCallback(() => {
+  // 중복 식별자 방지: toggleArrowAnnotate → handleToggleAnnotate
+  const handleToggleAnnotate = useCallback(() => {
     const tg = ToolGroupManager.getToolGroup(toolGroupId);
-    if (!tg) return console.warn('ToolGroup을 찾을 수 없습니다:', toolGroupId);
+    if (!tg) {
+      console.warn('ToolGroup을 찾을 수 없습니다:', toolGroupId);
+      return;
+    }
 
     if (annotating) {
       tg.setToolActive(WindowLevelTool.toolName, { bindings: [{ mouseButton: 1 }] });
@@ -50,8 +56,10 @@ export default function Toolbar({
     }
   }, [annotating, toolGroupId]);
 
-  // ---- imageId에서 키 파싱 (images | instances 모두 허용)
-  function parseImageIdKeys(imageId: string): { studyKey: number; seriesKey: number; imageKey: number; frameNo: number } | null {
+  // imageId → 키 파싱
+  function parseImageIdKeys(imageId: string): {
+    studyKey: number; seriesKey: number; imageKey: number; frameNo: number;
+  } | null {
     const regex = /studies\/(\d+)\/series\/(\d+)\/(images|instances)\/(\d+)(?:\/frames\/(\d+))?/;
     try {
       const m = imageId.match(regex);
@@ -67,8 +75,7 @@ export default function Toolbar({
     }
   }
 
-  // 주석 저장
-  const onSave = async () => {
+  const onSave = useCallback(async () => {
     try {
       const annotations = exportArrowAnnotations();
       if (annotations.length === 0) {
@@ -78,21 +85,18 @@ export default function Toolbar({
       await saveAnnotationsToServer({
         studyKey,
         seriesKey,
-        imageIdScope: 'image', // ← series가 아니라 image 기준으로 통일 (저장 로직은 image별 전송)
+        imageIdScope: 'image',
         annotations,
         savedAt: new Date().toISOString(),
       });
-      
       alert('주석이 저장되었습니다.');
     } catch (e: any) {
       console.error('Annotation 저장 중 오류 발생:', e);
       alert(`저장 실패: ${e.message}`);
     }
+  }, [studyKey, seriesKey]);
 
-  };
-
-  // 주석 불러오기
-  const onLoad = async () => {
+  const onLoad = useCallback(async () => {
     if (!viewportId) {
       alert('뷰포트가 준비되지 않았습니다. 먼저 시리즈를 불러오세요.');
       return;
@@ -102,7 +106,6 @@ export default function Toolbar({
       return;
     }
 
-    // 현재 뷰포트에서 imageId를 안전하게 얻기
     const re = getRenderingEngine(renderingEngineId);
     const vp: any = re?.getViewport(viewportId);
     if (!re || !vp) {
@@ -111,7 +114,6 @@ export default function Toolbar({
     }
 
     let currentImageId: string | undefined;
-    // Cornerstone 뷰포트 타입별 안전 로직
     if (typeof vp.getCurrentImageId === 'function') {
       currentImageId = vp.getCurrentImageId();
     } else if (typeof vp.getCurrentImageIdIndex === 'function' && typeof vp.getImageIds === 'function') {
@@ -124,7 +126,6 @@ export default function Toolbar({
       alert('현재 이미지 ID를 가져올 수 없습니다.');
       return;
     }
-    console.log('Current Image ID:', currentImageId);
 
     const keys = parseImageIdKeys(currentImageId);
     if (!keys) {
@@ -134,13 +135,11 @@ export default function Toolbar({
     }
 
     try {
-      // ✅ imageKey를 명시적으로 넘김
-      console.log('Fetching annotations with:', { studyKey, seriesKey, imageKey: String(keys.imageKey) });
-      const bundle = await fetchAnnotationsFromServer({
+      const bundle = (await fetchAnnotationsFromServer({
         studyKey,
         seriesKey,
         imageKey: String(keys.imageKey),
-      }) as AnnotationBundlePayload;
+      })) as AnnotationBundlePayload;
 
       if (!bundle || !Array.isArray(bundle.annotations) || bundle.annotations.length === 0) {
         alert('불러올 주석 데이터가 없습니다.');
@@ -153,24 +152,54 @@ export default function Toolbar({
       console.error('Annotation 불러오기 중 오류 발생:', e);
       alert(`불러오기 실패: ${e.message}`);
     }
-  };
+  }, [viewportId, seriesKey, renderingEngineId, studyKey]);
 
-  const onClear = () => {
+  const onClear = useCallback(() => {
     if (window.confirm('정말 모든 주석을 삭제하시겠습니까?')) {
       annotation.state.removeAllAnnotations();
       const re = getRenderingEngine(renderingEngineId);
       re?.render();
     }
-  };
+  }, [renderingEngineId]);
 
   return (
-    <div style={{ display: 'inline-flex', width: 'fit-content', height: 'fit-content' }}>
-      <button onClick={toggleArrowAnnotate}>
-        {annotating ? '주석 모드 종료' : 'Arrow 주석 달기'}
-      </button>
-      <button onClick={onSave}>주석 저장</button>
-      <button onClick={onLoad}>주석 불러오기</button>
-      <button onClick={onClear}>모두 삭제</button>
+    <div className="inline-flex items-center gap-2 rounded-xl border border-neutral-800 bg-neutral-900/60 px-2 py-1">
+      {/* 주석 토글 */}
+      <Button
+        size="sm"
+        onClick={handleToggleAnnotate}
+        className={annotating
+          ? 'bg-sky-500 hover:bg-sky-600 text-white'
+          : 'bg-neutral-800 hover:bg-neutral-700 text-neutral-100'}
+      >
+        <PencilLine className="h-4 w-4" />
+        <span className="ml-2">{annotating ? '주석 모드 종료' : 'Arrow 주석 달기'}</span>
+      </Button>
+
+      <div className="mx-1 h-5 w-px bg-neutral-800" />
+
+      {/* 저장 */}
+      <Button size="sm"  onClick={onSave} className="text-neutral-200 hover:bg-neutral-800">
+        <Save className="h-4 w-4" />
+        <span className="ml-2">주석 저장</span>
+      </Button>
+
+      {/* 불러오기 */}
+      <Button size="sm" onClick={onLoad} className="text-neutral-200 hover:bg-neutral-800">
+        <FolderOpen className="h-4 w-4" />
+        <span className="ml-2">주석 불러오기</span>
+      </Button>
+
+      {/* 모두 삭제 */}
+      <Button
+        size="sm"
+    
+        onClick={onClear}
+        className="text-neutral-300 hover:bg-red-500/10 hover:text-red-200"
+      >
+        <Trash2 className="h-4 w-4" />
+        <span className="ml-2">모두 삭제</span>
+      </Button>
     </div>
   );
 }

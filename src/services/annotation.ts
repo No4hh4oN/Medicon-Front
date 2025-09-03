@@ -225,6 +225,7 @@ export async function fetchAnnotationsFromServer(params: {
     }
 
     console.log('Parsed annotations for import:', annotations);
+    
 
     const bundle: AnnotationBundlePayload = {
       studyKey,
@@ -241,21 +242,92 @@ export async function fetchAnnotationsFromServer(params: {
   }
 }
 
-// Cornerstone state에 주석 주입 및 렌더
+
+function clearElementAnnotations(el: HTMLDivElement) {
+  try {
+    // 최신 버전에선 element로 필터링 가능한 API가 있을 수 있음
+    const all = (annotation.state as any).getAnnotations?.() ?? [];
+    for (const a of all) {
+      // element 메타가 이 엘리먼트가 아니면 스킵
+      if (a?.metadata?.element && a.metadata.element !== el) continue;
+      (annotation.state as any).removeAnnotation?.(a.annotationUID, el);
+    }
+  } catch {}
+}
+
+
+function makeUid() {
+  return (typeof crypto !== "undefined" && crypto.randomUUID)
+    ? crypto.randomUUID()
+    : "anno-" + Math.random().toString(36).slice(2) + Date.now().toString(36);
+}
+
+/**
+ * any 형태(bundle/annotations-string/objects-array) 모두 허용.
+ * - annotations 배열 정규화
+ * - annotationUID 재발급 (좌/우 충돌 방지)
+ * - 현재 뷰포트 imageId로 referencedImageId 고정 (표시 보장)
+ */
 export function importArrowAnnotations(
-  bundle: AnnotationBundlePayload,
+  bundle: any,
   renderingEngineId: string,
-  viewportId: string,
+  viewportId: string
 ) {
   const re = getRenderingEngine(renderingEngineId);
   const vp: any = re?.getViewport(viewportId);
   const el = vp?.element as HTMLDivElement | undefined;
   if (!re || !vp || !el) return;
 
-  for (const ann of bundle.annotations) {
-    console.log('Importing annotation:', ann);
-    console.log('Viewport Image ID (if available):', vp?.getCurrentImageId?.());
-    annotation.state.addAnnotation(ann as any, el);
+  clearElementAnnotations(el);
+
+  // 1) annotations 배열 정규화
+  let annos: any[] = [];
+  if (Array.isArray(bundle?.annotations)) {
+    annos = bundle.annotations;
+  } else if (Array.isArray(bundle?.objects)) {
+    annos = bundle.objects;
+  } else if (typeof bundle?.annotations === "string") {
+    try {
+      const parsed = JSON.parse(bundle.annotations);
+      if (Array.isArray(parsed?.objects)) annos = parsed.objects;
+      else if (Array.isArray(parsed?.annotations)) annos = parsed.annotations;
+    } catch {}
   }
-  re?.render();
+  if (!Array.isArray(annos)) annos = [];
+
+  // 2) 현재 뷰포트의 imageId 확보
+  const currentImageId: string | undefined = (() => {
+    try {
+      if (typeof vp.getCurrentImageId === "function") return vp.getCurrentImageId();
+      if (typeof vp.getCurrentImageIdIndex === "function" && typeof vp.getImageIds === "function") {
+        const idx = vp.getCurrentImageIdIndex();
+        const ids = vp.getImageIds?.();
+        return Array.isArray(ids) ? ids[idx] : undefined;
+      }
+    } catch {}
+    return undefined;
+  })();
+
+  // 3) UID 재발급 + imageId 고정
+  const wado = (id: string) => (id.startsWith("wadouri:") ? id : `wadouri:${id}`);
+  for (const raw of annos) {
+    const patched = JSON.parse(JSON.stringify(raw));
+    patched.annotationUID = makeUid();
+    patched.toolName = patched.toolName || "ArrowAnnotate";
+
+    if (currentImageId) {
+      const rid = wado(currentImageId);
+      patched.referencedImageId = rid;
+      patched.metadata = {
+        ...(patched.metadata ?? {}),
+        referencedImageId: rid,
+        referencedImageURI: rid.replace(/^wadouri:/, ""),
+      };
+    }
+
+    annotation.state.addAnnotation(patched as any, el);
+  }
+
+  re.render?.();
 }
+
