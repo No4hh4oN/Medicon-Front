@@ -331,6 +331,7 @@ const LogsView: React.FC = () => {
                 <tr>
                   <th className="px-6 py-3">ID</th>
                   <th className="px-6 py-3">사용자</th>
+                  <th className="px-6 py-3">Study Key</th>
                   <th className="px-6 py-3">타입</th>
                   <th className="px-6 py-3">액션</th>
                   <th className="px-6 py-3">변경 내용</th>
@@ -364,6 +365,9 @@ const LogsView: React.FC = () => {
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap break-keep min-w-[96px]">
                             {log.userId}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap break-keep min-w-[100px]">
+                            {log.studyKey}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap break-keep min-w-[120px]">
                             <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold leading-none whitespace-nowrap break-keep ${cBadge.className}`}>
