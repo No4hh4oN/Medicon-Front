@@ -1,20 +1,28 @@
-import { annotation } from '@cornerstonejs/tools';
-import { API_ROOT } from '@/config/api';
-import type { AnnotationBundlePayload, ArrowAnnotationData } from '@/types/annotation';
-import { getRenderingEngine } from '@cornerstonejs/core';
+// src/services/annotation.ts
+import { annotation } from "@cornerstonejs/tools";
+import { API_ROOT } from "@/config/api";
+import type { AnnotationBundlePayload, ArrowAnnotationData } from "@/types/annotation";
+import { getRenderingEngine } from "@cornerstonejs/core";
 
+/* ============ 유틸 ============ */
 function pickArrow(ann: any): ann is ArrowAnnotationData {
-  return ann?.metadata?.toolName === 'ArrowAnnotate' || ann?.toolName === 'ArrowAnnotate';
+  return ann?.metadata?.toolName === "ArrowAnnotate" || ann?.toolName === "ArrowAnnotate";
 }
 
-// Cornerstone 전체 애노테이션에서 Arrow만 뽑아 직렬화
+function makeUid() {
+  return (typeof crypto !== "undefined" && crypto.randomUUID)
+    ? crypto.randomUUID()
+    : "anno-" + Math.random().toString(36).slice(2) + Date.now().toString(36);
+}
+
+/* ============ Export ============ */
 export function exportArrowAnnotations(): ArrowAnnotationData[] {
   const all = annotation.state.getAllAnnotations(); // 모든 툴 포함
   const arrows: ArrowAnnotationData[] = all
     .filter(pickArrow)
     .map((a: any) => ({
-      annotationUID: a.annotationUID ?? crypto.randomUUID(),
-      toolName: a.metadata?.toolName ?? a.toolName ?? 'ArrowAnnotate',
+      annotationUID: a.annotationUID ?? makeUid(),
+      toolName: a.metadata?.toolName ?? a.toolName ?? "ArrowAnnotate",
       referencedImageId: a.metadata?.referencedImageId ?? a.referencedImageId,
       data: a.data ?? {},
       metadata: a.metadata ?? {},
@@ -22,32 +30,23 @@ export function exportArrowAnnotations(): ArrowAnnotationData[] {
   return arrows;
 }
 
-// 서버에 저장
+/* ============ Save to Server ============ */
 export async function saveAnnotationsToServer(payload: AnnotationBundlePayload) {
-  /**
-   * wadors/http 등으로 시작하는 imageId에서 study/series/image/frame 키를 추출합니다.
-   * 예시 포맷:
-   *   .../studies/10/series/2/images/153/frames/5
-   *   .../studies/10/series/2/instances/153/frames/5
-   */
   function parseImageIdKeys(
     imageId: string,
   ): { studyKey: number; seriesKey: number; imageKey: number; frameNo: number } | null {
-    // images 또는 instances 모두 허용
     const regex = /studies\/(\d+)\/series\/(\d+)\/(images|instances)\/(\d+)(?:\/frames\/(\d+))?/;
 
     try {
       const match = imageId.match(regex);
-      if (!match) {
-        throw new Error(`Could not parse required keys from imageId: ${imageId}`);
-      }
+      if (!match) throw new Error(`Could not parse required keys from imageId: ${imageId}`);
       const studyKey = parseInt(match[1], 10);
       const seriesKey = parseInt(match[2], 10);
       const imageKey = parseInt(match[4], 10);
-      const frameNo = match[5] ? parseInt(match[5], 10) : -1;
+      const frameNo  = match[5] ? parseInt(match[5], 10) : -1;
 
       if (isNaN(studyKey) || isNaN(seriesKey) || isNaN(imageKey)) {
-        console.error('Failed to parse one or more keys from imageId', imageId);
+        console.error("Failed to parse one or more keys from imageId", imageId);
         return null;
       }
       return { studyKey, seriesKey, imageKey, frameNo };
@@ -57,67 +56,57 @@ export async function saveAnnotationsToServer(payload: AnnotationBundlePayload) 
     }
   }
 
-  const { studyKey, seriesKey, currentImageId, annotations } = payload; // Destructure currentImageId
+  const { currentImageId, annotations } = payload;
 
-  // 1. referencedImageId를 기준으로 주석들을 그룹화합니다.
   const groupedByImageId: Record<string, ArrowAnnotationData[]> = {};
   if (annotations.length > 0) {
     annotations.reduce((acc, ann) => {
       const imageId = ann.referencedImageId;
       if (!imageId) {
-        console.warn('Annotation without referencedImageId found, skipping:', ann);
+        console.warn("Annotation without referencedImageId found, skipping:", ann);
         return acc;
       }
-      if (!acc[imageId]) {
-        acc[imageId] = [];
-      }
+      if (!acc[imageId]) acc[imageId] = [];
       acc[imageId].push(ann);
       return acc;
     }, groupedByImageId);
   } else if (currentImageId) {
-    // If no annotations, but currentImageId is provided, prepare an empty entry for it
     groupedByImageId[currentImageId] = [];
   }
 
-  // 2. 백엔드 API 형식에 맞는 payload 배열을 생성합니다.
   const backendPayload = Object.entries(groupedByImageId)
-    .map(([imageId, imageAnnotations]) => { // Renamed annotations to imageAnnotations for clarity
+    .map(([imageId, imageAnnotations]) => {
       const keys = parseImageIdKeys(imageId);
       if (!keys) return null;
-
       return {
         ...keys,
-        annotations: JSON.stringify({ version: '5.3.0', objects: imageAnnotations }),
-        createdAt: new Date().toISOString().slice(0, 19).replace('T', ' '),
+        annotations: JSON.stringify({ version: "5.3.0", objects: imageAnnotations }),
+        createdAt: new Date().toISOString().slice(0, 19).replace("T", " "),
       };
     })
     .filter((p): p is NonNullable<typeof p> => p !== null);
 
-  // If backendPayload is still empty after trying to add currentImageId, then there's nothing to send.
   if (backendPayload.length === 0) {
-    console.log('저장할 주석 데이터가 없습니다 (currentImageId도 없음).');
+    console.log("저장할 주석 데이터가 없습니다 (currentImageId도 없음).");
     return;
   }
 
-  // 3. 각 이미지별로 API를 호출하여 주석을 저장합니다.
-  // API_ROOT ('.../dicom')를 기준으로 annotation API ('.../annotations') URL을 생성합니다.
-  const ANNOTATION_API_ROOT = API_ROOT.replace('/dicom', '/annotations');
+  const ANNOTATION_API_ROOT = API_ROOT.replace("/dicom", "/annotations");
 
   const promises = backendPayload.map((payloadItem) => {
     const { studyKey, seriesKey, imageKey } = payloadItem;
     const url = `${ANNOTATION_API_ROOT}/studies/${studyKey}/series/${seriesKey}/images/${imageKey}`;
 
     return fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payloadItem),
-      credentials: 'include',
+      credentials: "include",
     });
   });
 
   try {
     const responses = await Promise.all(promises);
-
     for (const res of responses) {
       if (!res.ok) {
         const errorBody = await res.text();
@@ -125,218 +114,203 @@ export async function saveAnnotationsToServer(payload: AnnotationBundlePayload) 
       }
     }
   } catch (error) {
-    console.error('Annotation 저장 중 오류 발생:', error);
+    console.error("Annotation 저장 중 오류 발생:", error);
     throw error;
   }
 }
 
-// 서버에서 불러오기
+/* ============ Fetch from Server ============ */
 export async function fetchAnnotationsFromServer(params: {
   studyKey: string;
-  seriesKey: string;   // 필수
-  imageKey: string;    // ✅ 추가: 저장 API와 동일하게 이미지 단건 기준으로 조회
+  seriesKey: string;
+  imageKey: string;
 }) {
-  const ANNOTATION_API_ROOT = API_ROOT.replace('/dicom', '/annotations');
+  const ANNOTATION_API_ROOT = API_ROOT.replace("/dicom", "/annotations");
   const { studyKey, seriesKey, imageKey } = params;
 
   const url = `${ANNOTATION_API_ROOT}/studies/${studyKey}/series/${seriesKey}/images/${imageKey}`;
-  console.log('Fetching annotations from URL:', url);
+  console.log("Fetching annotations from URL:", url);
 
-  const res = await fetch(url, { credentials: 'include' });
-  console.log('Annotation fetch response:', res);
+  const res = await fetch(url, { credentials: "include" });
+  console.log("Annotation fetch response:", res);
   if (!res.ok) {
     throw new Error(`Annotation 불러오기 실패: ${res.status} - ${res.statusText}`);
   }
 
   const text = await res.text();
 
-  // 주석이 없는 경우, 빈 번들 반환
   if (!text) {
     return {
       studyKey,
       seriesKey,
-      imageIdScope: 'image' as const,
+      imageIdScope: "image" as const,
       annotations: [],
       savedAt: new Date().toISOString(),
     } as AnnotationBundlePayload;
   }
 
   try {
-    const rawArray = JSON.parse(text); // Parse the outer array
+    const rawArray = JSON.parse(text);
     if (!Array.isArray(rawArray) || rawArray.length === 0) {
-      // Handle empty or non-array response
       return {
         studyKey,
         seriesKey,
-        imageIdScope: 'image' as const,
+        imageIdScope: "image" as const,
         annotations: [],
         savedAt: new Date().toISOString(),
       } as AnnotationBundlePayload;
     }
 
-    // 서버가 주는 형태가 유연할 수 있으니 안전하게 정규화
     const raw = rawArray[0] as
       | AnnotationBundlePayload
-      | {
-          annotations?:
-            | string
-            | { version?: string; objects?: any[] }
-            | any[];
-          savedAt?: string;
-        };
+      | { annotations?: string | { version?: string; objects?: any[] } | any[]; savedAt?: string };
 
-    let annotations: any[] = [];
+    let annotationsArr: any[] = [];
 
-    // 1) 이미 배열인 경우
     if (Array.isArray((raw as any).annotations)) {
-      annotations = (raw as any).annotations as any[];
-    }
-    // 2) 문자열인 경우 -> JSON 파싱 후 객체의 objects 또는 배열 사용
-    else if (typeof (raw as any).annotations === 'string') {
+      annotationsArr = (raw as any).annotations as any[];
+    } else if (typeof (raw as any).annotations === "string") {
       try {
-        const parsed = JSON.parse((raw as any).annotations); // First JSON.parse
-
-        let finalAnnotations: any[] = [];
-
-        // Check if parsed.annotations exists and is a string, then parse it again
-        if (typeof parsed?.annotations === 'string') {
+        const parsed = JSON.parse((raw as any).annotations);
+        let final: any[] = [];
+        if (typeof parsed?.annotations === "string") {
           try {
-            const innerParsed = JSON.parse(parsed.annotations); // Second JSON.parse
-            if (Array.isArray(innerParsed?.objects)) {
-              finalAnnotations = innerParsed.objects;
-            } else if (Array.isArray(innerParsed)) {
-              finalAnnotations = innerParsed;
-            }
-          } catch (e) {
-            console.error('Failed to parse inner annotations string:', e);
-          }
-        } else if (Array.isArray(parsed?.objects)) {
-          finalAnnotations = parsed.objects;
-        } else if (Array.isArray(parsed)) {
-          finalAnnotations = parsed;
-        }
-
-        annotations = finalAnnotations; // Assign to the main annotations variable
+            const inner = JSON.parse(parsed.annotations);
+            if (Array.isArray(inner?.objects)) final = inner.objects;
+            else if (Array.isArray(inner)) final = inner;
+          } catch {}
+        } else if (Array.isArray(parsed?.objects)) final = parsed.objects;
+        else if (Array.isArray(parsed)) final = parsed;
+        annotationsArr = final;
       } catch {
-        annotations = [];
+        annotationsArr = [];
       }
-    }
-    // 3) 객체인 경우 -> objects 또는 객체 자체가 배열인지 체크
-    else if ((raw as any).annotations && typeof (raw as any).annotations === 'object') {
+    } else if ((raw as any).annotations && typeof (raw as any).annotations === "object") {
       const obj = (raw as any).annotations as any;
-      if (Array.isArray(obj?.objects)) {
-        annotations = obj.objects;
-      } else if (Array.isArray(obj)) {
-        annotations = obj;
-      } else {
-        annotations = [];
-      }
+      if (Array.isArray(obj?.objects)) annotationsArr = obj.objects;
+      else if (Array.isArray(obj)) annotationsArr = obj;
+      else annotationsArr = [];
     }
 
-    console.log('Parsed annotations for import:', annotations);
-    
+    console.log("Parsed annotations for import:", annotationsArr);
 
     const bundle: AnnotationBundlePayload = {
       studyKey,
       seriesKey,
-      imageIdScope: 'image' as const,
-      annotations,
+      imageIdScope: "image" as const,
+      annotations: annotationsArr,
       savedAt: (raw as any).savedAt ?? new Date().toISOString(),
     };
 
     return bundle;
   } catch (e) {
-    console.error('Failed to parse annotations JSON:', e);
-    throw new Error('Failed to parse annotations from server.');
+    console.error("Failed to parse annotations JSON:", e);
+    throw new Error("Failed to parse annotations from server.");
   }
 }
 
-
+/* ============ 주석 정리/주입 유틸 ============ */
 function clearElementAnnotations(el: HTMLDivElement) {
   try {
-    // 최신 버전에선 element로 필터링 가능한 API가 있을 수 있음
-    const all = (annotation.state as any).getAnnotations?.() ?? [];
+    const all = (annotation.state as any).getAllAnnotations?.() ?? (annotation.state as any).getAnnotations?.() ?? [];
     for (const a of all) {
-      // element 메타가 이 엘리먼트가 아니면 스킵
+      // element 메타가 있고, 이 엘리먼트와 다르면 스킵
       if (a?.metadata?.element && a.metadata.element !== el) continue;
       (annotation.state as any).removeAnnotation?.(a.annotationUID, el);
     }
   } catch {}
 }
 
-
-function makeUid() {
-  return (typeof crypto !== "undefined" && crypto.randomUUID)
-    ? crypto.randomUUID()
-    : "anno-" + Math.random().toString(36).slice(2) + Date.now().toString(36);
-}
-
 /**
- * any 형태(bundle/annotations-string/objects-array) 모두 허용.
- * - annotations 배열 정규화
- * - annotationUID 재발급 (좌/우 충돌 방지)
- * - 현재 뷰포트 imageId로 referencedImageId 고정 (표시 보장)
+ * ★ 핵심 주입 함수:
+ * - bundle 안의 objects/annotations를 정규화
+ * - 각 주석에 고유 UID 재발급(충돌 방지)
+ * - 반드시 metadata.element = 해당 뷰포트 element
+ * - 선택: metadata.toolGroupId = 해당 toolGroupId
+ * - referencedImageId를 현재 뷰포트 이미지로 보정(없을 때)
  */
-export function importArrowAnnotations(
-  bundle: any,
+export function injectBundleIntoViewportWithScope(
+  bundleLike: any,
   renderingEngineId: string,
-  viewportId: string
+  viewportId: string,
+  toolGroupId?: string
 ) {
   const re = getRenderingEngine(renderingEngineId);
   const vp: any = re?.getViewport(viewportId);
   const el = vp?.element as HTMLDivElement | undefined;
   if (!re || !vp || !el) return;
 
+  // 이 뷰포트 소유 주석만 남기고 정리(선택적)
   clearElementAnnotations(el);
 
-  // 1) annotations 배열 정규화
+  // annotations 정규화
   let annos: any[] = [];
-  if (Array.isArray(bundle?.annotations)) {
-    annos = bundle.annotations;
-  } else if (Array.isArray(bundle?.objects)) {
-    annos = bundle.objects;
-  } else if (typeof bundle?.annotations === "string") {
+  if (Array.isArray(bundleLike?.objects)) annos = bundleLike.objects;
+  else if (Array.isArray(bundleLike?.annotations)) annos = bundleLike.annotations;
+  else if (typeof bundleLike?.annotations === "string") {
     try {
-      const parsed = JSON.parse(bundle.annotations);
+      const parsed = JSON.parse(bundleLike.annotations);
       if (Array.isArray(parsed?.objects)) annos = parsed.objects;
-      else if (Array.isArray(parsed?.annotations)) annos = parsed.annotations;
+      else if (Array.isArray(parsed)) annos = parsed;
     } catch {}
   }
-  if (!Array.isArray(annos)) annos = [];
 
-  // 2) 현재 뷰포트의 imageId 확보
-  const currentImageId: string | undefined = (() => {
-    try {
-      if (typeof vp.getCurrentImageId === "function") return vp.getCurrentImageId();
-      if (typeof vp.getCurrentImageIdIndex === "function" && typeof vp.getImageIds === "function") {
-        const idx = vp.getCurrentImageIdIndex();
-        const ids = vp.getImageIds?.();
-        return Array.isArray(ids) ? ids[idx] : undefined;
-      }
-    } catch {}
-    return undefined;
-  })();
+  // 현재 이미지 id
+  let currentImageId: string | undefined;
+  try {
+    if (typeof vp.getCurrentImageId === "function") currentImageId = vp.getCurrentImageId();
+    else if (typeof vp.getCurrentImageIdIndex === "function" && typeof vp.getImageIds === "function") {
+      const idx = vp.getCurrentImageIdIndex();
+      const ids = vp.getImageIds?.();
+      currentImageId = Array.isArray(ids) ? ids[idx] : undefined;
+    }
+  } catch {}
 
-  // 3) UID 재발급 + imageId 고정
-  const wado = (id: string) => (id.startsWith("wadouri:") ? id : `wadouri:${id}`);
-  for (const raw of annos) {
-    const patched = JSON.parse(JSON.stringify(raw));
-    patched.annotationUID = makeUid();
-    patched.toolName = patched.toolName || "ArrowAnnotate";
+  const wado = (id?: string) => (id && id.startsWith("wadouri:") ? id : id ? `wadouri:${id}` : undefined);
 
-    if (currentImageId) {
-      const rid = wado(currentImageId);
-      patched.referencedImageId = rid;
-      patched.metadata = {
-        ...(patched.metadata ?? {}),
-        referencedImageId: rid,
-        referencedImageURI: rid.replace(/^wadouri:/, ""),
-      };
+  for (const raw of annos || []) {
+    const a = JSON.parse(JSON.stringify(raw));
+    a.annotationUID = makeUid();
+    a.toolName = a.toolName || "ArrowAnnotate";
+
+    // ★ 소유권 주입
+    a.metadata = {
+      ...(a.metadata ?? {}),
+      element: el,
+      ...(toolGroupId ? { toolGroupId } : {}),
+    };
+
+    // referencedImageId 보정
+    const rid = wado(a.referencedImageId ?? a.metadata?.referencedImageId ?? currentImageId);
+    if (rid) {
+      a.referencedImageId = rid;
+      a.metadata.referencedImageId = rid;
+      a.metadata.referencedImageURI = rid.replace(/^wadouri:/, "");
     }
 
-    annotation.state.addAnnotation(patched as any, el);
+    (annotation.state as any).addAnnotation?.(a, el);
   }
 
+  console.log("[Inject OK]", { viewportId, toolGroupId, count: annos?.length ?? 0 });
   re.render?.();
 }
 
+/** 전역 상태에 남아 있는 소유권 없는(unscoped) 주석 제거 */
+export function purgeUnscopedAnnotations() {
+  try {
+    const all =
+      (annotation.state as any).getAllAnnotations?.() ??
+      (annotation.state as any).getAnnotations?.() ??
+      [];
+
+    for (const a of all) {
+      const hasEl = !!a?.metadata?.element;
+      const hasTG = !!a?.metadata?.toolGroupId;
+      if (!hasEl && !hasTG) {
+        (annotation.state as any).removeAnnotation?.(a.annotationUID);
+      }
+    }
+  } catch (e) {
+    console.warn("purgeUnscopedAnnotations failed", e);
+  }
+}
