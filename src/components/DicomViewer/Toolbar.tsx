@@ -11,7 +11,7 @@ import { getRenderingEngine } from '@cornerstonejs/core';
 import {
   exportArrowAnnotations,
   fetchAnnotationsFromServer,
-  importArrowAnnotations,
+  injectBundleIntoViewportWithScope,
   saveAnnotationsToServer,
 } from '@/services/annotation';
 import type { AnnotationBundlePayload } from '@/types/annotation';
@@ -167,7 +167,7 @@ export default function Toolbar({
         return;
       }
 
-      importArrowAnnotations(bundle, renderingEngineId, viewportId);
+      injectBundleIntoViewportWithScope(bundle, renderingEngineId, viewportId);
       alert('주석을 불러왔습니다.');
     } catch (e: any) {
       console.error('Annotation 불러오기 중 오류 발생:', e);

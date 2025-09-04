@@ -4,8 +4,12 @@ import { useEffect, useMemo, useRef } from "react";
 import { RenderingEngine, Enums } from "@cornerstonejs/core";
 import { Button } from "@/components/ui/button";
 import { ToolGroupManager, ArrowAnnotateTool } from "@cornerstonejs/tools";
-import { importArrowAnnotations } from "@/services/annotation";
-import { ensureCornerstoneReady } from "@/hooks/bootstrap"; // ← 경로 확인
+import { ensureCornerstoneReady } from "@/hooks/bootstrap";
+import { installScopedAnnotationFilterOnce } from "./annotationsFilter";
+import {
+  injectBundleIntoViewportWithScope,
+  purgeUnscopedAnnotations,
+} from "@/services/annotation";
 
 /* ======================= Types ======================= */
 export type AnnotationModalData = {
@@ -16,9 +20,9 @@ export type AnnotationModalData = {
   createdAt: string;
   actionType?: string; // C/I/U/D 등
   originalTitle?: string | null;
-  originalContent?: string | null; // ← 컨테이너 JSON 문자열(annotations 문자열 포함 가능)
+  originalContent?: string | null; // 컨테이너 JSON 문자열(annotations 문자열 포함 가능)
   newTitle?: string | null;
-  newContent?: string | null;      // ← 컨테이너 JSON 문자열(annotations 문자열 포함 가능)
+  newContent?: string | null;      // 컨테이너 JSON 문자열(annotations 문자열 포함 가능)
 };
 
 export interface AnnotationModalProps {
@@ -54,7 +58,8 @@ function resolveImageId(container: any, bundle: any, base = "http://localhost:80
     obj?.metadata?.referencedImageURI;
 
   if (typeof fromBundle === "string") {
-    return fromBundle.startsWith("wadouri:") ? fromBundle.replace(/\s+/g,"") : `wadouri:${fromBundle}`.replace(/\s+/g,"");
+    const id = fromBundle.startsWith("wadouri:") ? fromBundle : `wadouri:${fromBundle}`;
+    return id.replace(/\s+/g, "");
   }
 
   const s = container?.studyKey, se = container?.seriesKey, i = container?.imageKey;
@@ -63,15 +68,51 @@ function resolveImageId(container: any, bundle: any, base = "http://localhost:80
   const f = container?.frameNo;
   const frameSeg = typeof f === "number" && f >= 0 ? `/frames/${f}` : "";
   const url = `${base}/studies/${s}/series/${se}/images/${i}${frameSeg}`;
-
-  const id = `wadouri:${url}`.replace(/\s+/g, "");
-  return id;
+  return `wadouri:${url}`.replace(/\s+/g, "");
 }
 
 function pretty(raw?: string | null) {
   if (!raw) return "";
   try { return JSON.stringify(JSON.parse(raw), null, 2); }
   catch { return raw; }
+}
+
+/* ======================= ★ 프리뷰 imageId 분리 유틸 ======================= */
+/** base wadouri imageId 에 side 구분 파라미터를 붙여, 좌/우 서로 다른 imageId를 만든다 */
+function makePreviewImageId(baseWadoImageId: string, side: "left" | "right") {
+  // baseWadoImageId: "wadouri:http://.../images/1" 형태 가정
+  const prefix = "wadouri:";
+  const raw = baseWadoImageId.startsWith(prefix)
+    ? baseWadoImageId.slice(prefix.length)
+    : baseWadoImageId;
+
+  const url = new URL(raw);
+  url.searchParams.set("vp", side); // 좌/우를 구분하는 더미 파라미터
+  return `${prefix}${url.toString()}`;
+}
+
+/** 번들의 모든 annotation.referencedImageId 를 해당 프리뷰용 imageId로 강제 치환 */
+function remapBundleReferencedImageId(bundleLike: any, previewImageId: string) {
+  const clone = JSON.parse(JSON.stringify(bundleLike ?? {}));
+  const list: any[] =
+    (Array.isArray(clone.objects) && clone.objects) ||
+    (Array.isArray(clone.annotations) && clone.annotations) ||
+    [];
+
+  for (const a of list) {
+    if (!a) continue;
+    a.referencedImageId = previewImageId;
+    a.metadata = {
+      ...(a.metadata ?? {}),
+      referencedImageId: previewImageId,
+      referencedImageURI: previewImageId.replace(/^wadouri:/, ""),
+    };
+  }
+
+  if (Array.isArray(clone.objects)) clone.objects = list;
+  else if (Array.isArray(clone.annotations)) clone.annotations = list;
+
+  return clone;
 }
 
 /* ======================= Preview (독립 엔진/툴그룹, 보기 전용) ======================= */
@@ -82,81 +123,85 @@ function AnnotationPreview({ side, bundleJson }: CompareViewProps) {
   const ranRef = useRef(false);
 
   // 재렌더에도 불변이도록 useRef로 고유 ID 고정
-  const engineId = useRef(`anno-prev-engine-${side}-${Math.random().toString(36).slice(2)}`).current;
+  const engineId   = useRef(`anno-prev-engine-${side}-${Math.random().toString(36).slice(2)}`).current;
   const viewportId = useRef(`anno-prev-vp-${side}-${Math.random().toString(36).slice(2)}`).current;
-  const toolGroupId = useRef(`anno-prev-tg-${side}-${Math.random().toString(36).slice(2)}`).current;
+  const toolGroupId= useRef(`anno-prev-tg-${side}-${Math.random().toString(36).slice(2)}`).current;
 
   useEffect(() => {
     if (ranRef.current) return;
     ranRef.current = true;
+
     let re: RenderingEngine | null = null;
 
     (async () => {
       if (!hostRef.current || !bundleJson) return;
 
-      // Cornerstone 전역 초기화 보장 (core/loader/tools + addTool(ArrowAnnotate))
+      // Cornerstone 전역 초기화(loader/tools 등록 등)
       await ensureCornerstoneReady();
 
-      // 1) 컨테이너/번들 파싱
+      // 전역 필터(1회만 설치): element/toolGroupId가 맞는 것만 보이게
+      installScopedAnnotationFilterOnce();
+
+      // 컨테이너/번들 파싱
       const { container, bundle } = extractBundleFromContainer(bundleJson);
       if (!bundle) {
         console.warn("AnnotationPreview: 번들을 파싱하지 못했습니다.", { container });
         return;
       }
 
-      // 2) imageId 결정
-      const imageId = resolveImageId(container, bundle);
-      if (!imageId) {
+      // base imageId 결정
+      const baseImageId = resolveImageId(container, bundle);
+      if (!baseImageId || typeof baseImageId !== "string") {
         console.warn("AnnotationPreview: imageId를 찾을 수 없습니다.", { container, bundle });
         return;
       }
-      console.log("resolved imageId =", imageId);
-      if (!imageId || typeof imageId !== "string") return;
 
-      // 3) 엔진/뷰포트 생성
+      // ★ 좌/우 프리뷰용 imageId 생성 (동일 픽셀이라도 imageId 문자열을 분리)
+      const previewImageId = makePreviewImageId(baseImageId, side);
+
+      // 엔진/뷰포트 생성
       re = new RenderingEngine(engineId);
-      const el = hostRef.current;
+      const el = hostRef.current!;
 
       re.enableElement({
         viewportId,
         type: Enums.ViewportType.STACK,
-        element: el!,
+        element: el,
         defaultOptions: { background: [0, 0, 0] },
       });
 
-      // 4) 보기 전용 ToolGroup (Arrow만)
+      // ToolGroup 준비 (addTool → setToolPassive → addViewport 순서)
       let tg = ToolGroupManager.getToolGroup(toolGroupId);
       if (!tg) tg = ToolGroupManager.createToolGroup(toolGroupId)!;
-      // @ts-ignore(간단 중복체크)
-      /*
-      if (!(tg as any).tools?.[ArrowAnnotateTool.toolName]) {
-        tg.addTool(ArrowAnnotateTool.toolName);
-      }*/
+
       if (!tg.getToolInstance?.(ArrowAnnotateTool.toolName)) {
         tg.addTool(ArrowAnnotateTool.toolName);
       }
-
-      tg.addViewport(viewportId, engineId);
       tg.setToolPassive(ArrowAnnotateTool.toolName);
+      tg.addViewport(viewportId, engineId);
 
-      // 5) 이미지 로드 → 주석 입히기
-      const vp = re.getViewport(viewportId) as any;
-      await vp.setStack([imageId]);
+      // 이미지 로드 (좌/우 서로 다른 imageId 세팅)
+      const vp: any = re.getViewport(viewportId);
+      await vp.setStack([previewImageId]);
       await re.render();
 
-      importArrowAnnotations(bundle, engineId, viewportId);
-      //await re.render();
+      // ★ 주석도 프리뷰 imageId로 강제 치환 후 주입 (서로 섞이지 않도록)
+      const remapped = remapBundleReferencedImageId(bundle, previewImageId);
+      injectBundleIntoViewportWithScope(remapped, engineId, viewportId, toolGroupId);
 
       // 보기 전용
-      el!.style.pointerEvents = "none";
+      el.style.pointerEvents = "none";
+
+      // 디버그
+      console.log("[Preview Ready]", { side, engineId, viewportId, toolGroupId, imageId: previewImageId });
     })();
 
-    // 6) 클린업
+    // 클린업
     return () => {
       try { ToolGroupManager.getToolGroup(toolGroupId)?.removeViewports(viewportId, engineId); } catch {}
+      try { ToolGroupManager.destroyToolGroup(toolGroupId); } catch {}
       try { re?.disableElement(viewportId); } catch {}
       try { re?.destroy?.(); } catch {}
-      try { ToolGroupManager.destroyToolGroup(toolGroupId); } catch {}
     };
   }, [bundleJson, side, engineId, viewportId, toolGroupId]);
 
@@ -172,6 +217,13 @@ function AnnotationPreview({ side, bundleJson }: CompareViewProps) {
 const AnnotationModal: React.FC<AnnotationModalProps> = ({ open, data, onClose }) => {
   if (!open) return null;
 
+  // 모달 열릴 때 소유권 없는(unscoped) 주석은 싹 정리(전역 누적 방지)
+  useEffect(() => {
+    if (!open) return;
+    purgeUnscopedAnnotations();
+  }, [open]);
+
+  // ESC 닫기
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", onKey);
@@ -255,7 +307,7 @@ const AnnotationModal: React.FC<AnnotationModalProps> = ({ open, data, onClose }
           </div>
         )}
 
-        
+        {/* JSON 텍스트 비교 */}
         <div className="px-6 pb-6 pt-4">
           <div className="text-neutral-400 text-sm mb-2">내용(JSON)</div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -289,4 +341,3 @@ function Info({ label, value, nowrap = false }: { label: string; value: string; 
     </div>
   );
 }
-
