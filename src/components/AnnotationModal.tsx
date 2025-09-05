@@ -9,6 +9,8 @@ import { installScopedAnnotationFilterOnce } from "./annotationsFilter";
 import {
   injectBundleIntoViewportWithScope,
   purgeUnscopedAnnotations,
+  removeAnnotationsScoped,
+  removeAnnotationsByImageIdIncludes,
 } from "@/services/annotation";
 
 /* ======================= Types ======================= */
@@ -32,13 +34,10 @@ export interface AnnotationModalProps {
 }
 
 /* ======================= Utils ======================= */
-// 컨테이너(JSON 문자열) → { container, bundle } 파싱
 function extractBundleFromContainer(raw?: string | null) {
   if (!raw) return { container: null as any, bundle: null as any };
   let container: any = null;
   try { container = JSON.parse(raw); } catch { return { container: null, bundle: null }; }
-
-  // 컨테이너 자체가 번들일 수도, annotations 문자열을 품고 있을 수도
   if (container?.version && Array.isArray(container?.objects)) {
     return { container, bundle: container };
   }
@@ -49,7 +48,6 @@ function extractBundleFromContainer(raw?: string | null) {
   return { container, bundle };
 }
 
-// 번들/컨테이너에서 imageId 해석 (번들 우선 → 키로 조합)
 function resolveImageId(container: any, bundle: any, base = "http://localhost:8080/api/v1/dicom") {
   const obj = Array.isArray(bundle?.objects) ? bundle.objects[0] : null;
   const fromBundle =
@@ -77,28 +75,24 @@ function pretty(raw?: string | null) {
   catch { return raw; }
 }
 
-/* ======================= ★ 프리뷰 imageId 분리 유틸 ======================= */
-/** base wadouri imageId 에 side 구분 파라미터를 붙여, 좌/우 서로 다른 imageId를 만든다 */
+/* ======================= imageId 분리 유틸 ======================= */
 function makePreviewImageId(baseWadoImageId: string, side: "left" | "right") {
-  // baseWadoImageId: "wadouri:http://.../images/1" 형태 가정
   const prefix = "wadouri:";
   const raw = baseWadoImageId.startsWith(prefix)
     ? baseWadoImageId.slice(prefix.length)
     : baseWadoImageId;
 
   const url = new URL(raw);
-  url.searchParams.set("vp", side); // 좌/우를 구분하는 더미 파라미터
+  url.searchParams.set("vp", side);
   return `${prefix}${url.toString()}`;
 }
 
-/** 번들의 모든 annotation.referencedImageId 를 해당 프리뷰용 imageId로 강제 치환 */
 function remapBundleReferencedImageId(bundleLike: any, previewImageId: string) {
   const clone = JSON.parse(JSON.stringify(bundleLike ?? {}));
   const list: any[] =
     (Array.isArray(clone.objects) && clone.objects) ||
     (Array.isArray(clone.annotations) && clone.annotations) ||
     [];
-
   for (const a of list) {
     if (!a) continue;
     a.referencedImageId = previewImageId;
@@ -108,24 +102,29 @@ function remapBundleReferencedImageId(bundleLike: any, previewImageId: string) {
       referencedImageURI: previewImageId.replace(/^wadouri:/, ""),
     };
   }
-
   if (Array.isArray(clone.objects)) clone.objects = list;
   else if (Array.isArray(clone.annotations)) clone.annotations = list;
-
   return clone;
 }
 
 /* ======================= Preview (독립 엔진/툴그룹, 보기 전용) ======================= */
-type CompareViewProps = { side: "left" | "right"; bundleJson?: string | null };
+type PreviewCtx = { element: HTMLDivElement; toolGroupId: string; previewImageId: string };
+type CompareViewProps = {
+  side: "left" | "right";
+  bundleJson?: string | null;
+  onReady?: (ctx: PreviewCtx) => void;
+};
 
-function AnnotationPreview({ side, bundleJson }: CompareViewProps) {
+function AnnotationPreview({ side, bundleJson, onReady }: CompareViewProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const ranRef = useRef(false);
 
-  // 재렌더에도 불변이도록 useRef로 고유 ID 고정
   const engineId   = useRef(`anno-prev-engine-${side}-${Math.random().toString(36).slice(2)}`).current;
   const viewportId = useRef(`anno-prev-vp-${side}-${Math.random().toString(36).slice(2)}`).current;
   const toolGroupId= useRef(`anno-prev-tg-${side}-${Math.random().toString(36).slice(2)}`).current;
+
+  const elementRef = useRef<HTMLDivElement | null>(null);
+  const previewIdRef = useRef<string>("");
 
   useEffect(() => {
     if (ranRef.current) return;
@@ -136,32 +135,27 @@ function AnnotationPreview({ side, bundleJson }: CompareViewProps) {
     (async () => {
       if (!hostRef.current || !bundleJson) return;
 
-      // Cornerstone 전역 초기화(loader/tools 등록 등)
       await ensureCornerstoneReady();
-
-      // 전역 필터(1회만 설치): element/toolGroupId가 맞는 것만 보이게
       installScopedAnnotationFilterOnce();
 
-      // 컨테이너/번들 파싱
       const { container, bundle } = extractBundleFromContainer(bundleJson);
       if (!bundle) {
         console.warn("AnnotationPreview: 번들을 파싱하지 못했습니다.", { container });
         return;
       }
 
-      // base imageId 결정
       const baseImageId = resolveImageId(container, bundle);
       if (!baseImageId || typeof baseImageId !== "string") {
         console.warn("AnnotationPreview: imageId를 찾을 수 없습니다.", { container, bundle });
         return;
       }
 
-      // ★ 좌/우 프리뷰용 imageId 생성 (동일 픽셀이라도 imageId 문자열을 분리)
       const previewImageId = makePreviewImageId(baseImageId, side);
+      previewIdRef.current = previewImageId;
 
-      // 엔진/뷰포트 생성
       re = new RenderingEngine(engineId);
       const el = hostRef.current!;
+      elementRef.current = el;
 
       re.enableElement({
         viewportId,
@@ -170,7 +164,6 @@ function AnnotationPreview({ side, bundleJson }: CompareViewProps) {
         defaultOptions: { background: [0, 0, 0] },
       });
 
-      // ToolGroup 준비 (addTool → setToolPassive → addViewport 순서)
       let tg = ToolGroupManager.getToolGroup(toolGroupId);
       if (!tg) tg = ToolGroupManager.createToolGroup(toolGroupId)!;
 
@@ -180,30 +173,41 @@ function AnnotationPreview({ side, bundleJson }: CompareViewProps) {
       tg.setToolPassive(ArrowAnnotateTool.toolName);
       tg.addViewport(viewportId, engineId);
 
-      // 이미지 로드 (좌/우 서로 다른 imageId 세팅)
       const vp: any = re.getViewport(viewportId);
       await vp.setStack([previewImageId]);
       await re.render();
 
-      // ★ 주석도 프리뷰 imageId로 강제 치환 후 주입 (서로 섞이지 않도록)
       const remapped = remapBundleReferencedImageId(bundle, previewImageId);
       injectBundleIntoViewportWithScope(remapped, engineId, viewportId, toolGroupId);
 
-      // 보기 전용
       el.style.pointerEvents = "none";
 
-      // 디버그
+      onReady?.({ element: el, toolGroupId, previewImageId });
+
       console.log("[Preview Ready]", { side, engineId, viewportId, toolGroupId, imageId: previewImageId });
     })();
 
-    // 클린업
     return () => {
+      // 1) element/toolGroupId 기준 삭제
+      try { removeAnnotationsScoped({ element: elementRef.current ?? undefined, toolGroupId }); } catch {}
+
+      // 2) referencedImageId( ?vp=left|right ) 기준 추가 삭제 (혹시 남은 것 대비)
+      try {
+        const frag = `vp=${side}`;
+        removeAnnotationsByImageIdIncludes(frag);
+      } catch {}
+
+      // 3) 소유권 없는 잔여 주석 정리
+      try { purgeUnscopedAnnotations(); } catch {}
+
+      // 4) 뷰포트/툴그룹/엔진 종료
       try { ToolGroupManager.getToolGroup(toolGroupId)?.removeViewports(viewportId, engineId); } catch {}
       try { ToolGroupManager.destroyToolGroup(toolGroupId); } catch {}
       try { re?.disableElement(viewportId); } catch {}
       try { re?.destroy?.(); } catch {}
     };
-  }, [bundleJson, side, engineId, viewportId, toolGroupId]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bundleJson, side]);
 
   return (
     <div
@@ -217,18 +221,37 @@ function AnnotationPreview({ side, bundleJson }: CompareViewProps) {
 const AnnotationModal: React.FC<AnnotationModalProps> = ({ open, data, onClose }) => {
   if (!open) return null;
 
-  // 모달 열릴 때 소유권 없는(unscoped) 주석은 싹 정리(전역 누적 방지)
+  // 좌/우 프리뷰 컨텍스트 저장(닫기 직전 강제 정리를 위해)
+  const leftCtx  = useRef<PreviewCtx | null>(null);
+  const rightCtx = useRef<PreviewCtx | null>(null);
+
   useEffect(() => {
     if (!open) return;
     purgeUnscopedAnnotations();
   }, [open]);
 
-  // ESC 닫기
+  // 닫기 직전 강제 정리(언마운트 전에 수행)
+  const closeWithCleanup = () => {
+    try {
+      if (leftCtx.current) {
+        removeAnnotationsScoped({ element: leftCtx.current.element, toolGroupId: leftCtx.current.toolGroupId });
+        removeAnnotationsByImageIdIncludes("vp=left");
+      }
+      if (rightCtx.current) {
+        removeAnnotationsScoped({ element: rightCtx.current.element, toolGroupId: rightCtx.current.toolGroupId });
+        removeAnnotationsByImageIdIncludes("vp=right");
+      }
+      purgeUnscopedAnnotations();
+    } catch {}
+    onClose();
+  };
+
+  // ESC
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") closeWithCleanup(); };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, []); // closeWithCleanup는 안정적(상수) 캡쳐
 
   const originalPretty = useMemo(() => pretty(data.originalContent), [data.originalContent]);
   const newPretty      = useMemo(() => pretty(data.newContent),      [data.newContent]);
@@ -236,7 +259,7 @@ const AnnotationModal: React.FC<AnnotationModalProps> = ({ open, data, onClose }
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true" aria-label="Annotation 상세">
       {/* Overlay */}
-      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/50" onClick={closeWithCleanup} />
 
       {/* Dialog */}
       <div className="relative bg-neutral-900 text-neutral-100 rounded-lg shadow-xl w-full max-w-5xl mx-4">
@@ -249,7 +272,7 @@ const AnnotationModal: React.FC<AnnotationModalProps> = ({ open, data, onClose }
                 {data.actionType}
               </span>
             )}
-            <Button onClick={onClose} className="bg-neutral-800 hover:bg-neutral-700 h-8 px-3">닫기</Button>
+            <Button onClick={closeWithCleanup} className="bg-neutral-800 hover:bg-neutral-700 h-8 px-3">닫기</Button>
           </div>
         </div>
 
@@ -290,7 +313,11 @@ const AnnotationModal: React.FC<AnnotationModalProps> = ({ open, data, onClose }
               <div className="space-y-1">
                 <div className="text-neutral-400 text-xs">이전 (ORIGINAL)</div>
                 {data.originalContent ? (
-                  <AnnotationPreview side="left" bundleJson={data.originalContent} />
+                  <AnnotationPreview
+                    side="left"
+                    bundleJson={data.originalContent}
+                    onReady={(ctx) => { leftCtx.current = ctx; }}
+                  />
                 ) : (
                   <div className="text-neutral-500 bg-neutral-800 rounded p-3 text-center">-</div>
                 )}
@@ -298,7 +325,11 @@ const AnnotationModal: React.FC<AnnotationModalProps> = ({ open, data, onClose }
               <div className="space-y-1">
                 <div className="text-neutral-400 text-xs">현재 (NEW)</div>
                 {data.newContent ? (
-                  <AnnotationPreview side="right" bundleJson={data.newContent} />
+                  <AnnotationPreview
+                    side="right"
+                    bundleJson={data.newContent}
+                    onReady={(ctx) => { rightCtx.current = ctx; }}
+                  />
                 ) : (
                   <div className="text-neutral-500 bg-neutral-800 rounded p-3 text-center">-</div>
                 )}

@@ -214,21 +214,12 @@ function clearElementAnnotations(el: HTMLDivElement) {
   try {
     const all = (annotation.state as any).getAllAnnotations?.() ?? (annotation.state as any).getAnnotations?.() ?? [];
     for (const a of all) {
-      // element 메타가 있고, 이 엘리먼트와 다르면 스킵
       if (a?.metadata?.element && a.metadata.element !== el) continue;
       (annotation.state as any).removeAnnotation?.(a.annotationUID, el);
     }
   } catch {}
 }
 
-/**
- * ★ 핵심 주입 함수:
- * - bundle 안의 objects/annotations를 정규화
- * - 각 주석에 고유 UID 재발급(충돌 방지)
- * - 반드시 metadata.element = 해당 뷰포트 element
- * - 선택: metadata.toolGroupId = 해당 toolGroupId
- * - referencedImageId를 현재 뷰포트 이미지로 보정(없을 때)
- */
 export function injectBundleIntoViewportWithScope(
   bundleLike: any,
   renderingEngineId: string,
@@ -240,10 +231,8 @@ export function injectBundleIntoViewportWithScope(
   const el = vp?.element as HTMLDivElement | undefined;
   if (!re || !vp || !el) return;
 
-  // 이 뷰포트 소유 주석만 남기고 정리(선택적)
   clearElementAnnotations(el);
 
-  // annotations 정규화
   let annos: any[] = [];
   if (Array.isArray(bundleLike?.objects)) annos = bundleLike.objects;
   else if (Array.isArray(bundleLike?.annotations)) annos = bundleLike.annotations;
@@ -255,7 +244,6 @@ export function injectBundleIntoViewportWithScope(
     } catch {}
   }
 
-  // 현재 이미지 id
   let currentImageId: string | undefined;
   try {
     if (typeof vp.getCurrentImageId === "function") currentImageId = vp.getCurrentImageId();
@@ -273,14 +261,12 @@ export function injectBundleIntoViewportWithScope(
     a.annotationUID = makeUid();
     a.toolName = a.toolName || "ArrowAnnotate";
 
-    // ★ 소유권 주입
     a.metadata = {
       ...(a.metadata ?? {}),
       element: el,
       ...(toolGroupId ? { toolGroupId } : {}),
     };
 
-    // referencedImageId 보정
     const rid = wado(a.referencedImageId ?? a.metadata?.referencedImageId ?? currentImageId);
     if (rid) {
       a.referencedImageId = rid;
@@ -312,5 +298,53 @@ export function purgeUnscopedAnnotations() {
     }
   } catch (e) {
     console.warn("purgeUnscopedAnnotations failed", e);
+  }
+}
+
+/* ====== ⬇️ 추가: 소유권/이미지ID 기준 삭제 유틸 (3중 방어) ====== */
+export function removeAnnotationsScoped(options: { element?: HTMLElement; toolGroupId?: string }) {
+  try {
+    const all =
+      (annotation.state as any).getAllAnnotations?.() ??
+      (annotation.state as any).getAnnotations?.() ??
+      [];
+
+    for (const a of all) {
+      if (options.element && a?.metadata?.element !== options.element) continue;
+      if (options.toolGroupId && a?.metadata?.toolGroupId !== options.toolGroupId) continue;
+      (annotation.state as any).removeAnnotation?.(a.annotationUID, options.element);
+    }
+  } catch (e) {
+    console.warn("removeAnnotationsScoped failed", e);
+  }
+}
+
+/** 정확히 일치하는 referencedImageId 로 삭제 */
+export function removeAnnotationsByImageId(imageId: string) {
+  try {
+    const all = (annotation.state as any).getAllAnnotations?.() ?? [];
+    for (const a of all) {
+      const rid = a?.metadata?.referencedImageId ?? a?.referencedImageId;
+      if (rid === imageId) {
+        (annotation.state as any).removeAnnotation?.(a.annotationUID);
+      }
+    }
+  } catch (e) {
+    console.warn("removeAnnotationsByImageId failed", e);
+  }
+}
+
+/** referencedImageId 문자열 포함으로 삭제 (예: '?vp=left' / '?vp=right') */
+export function removeAnnotationsByImageIdIncludes(fragment: string) {
+  try {
+    const all = (annotation.state as any).getAllAnnotations?.() ?? [];
+    for (const a of all) {
+      const rid = (a?.metadata?.referencedImageId ?? a?.referencedImageId)?.toString() || "";
+      if (rid.includes(fragment)) {
+        (annotation.state as any).removeAnnotation?.(a.annotationUID);
+      }
+    }
+  } catch (e) {
+    console.warn("removeAnnotationsByImageIdIncludes failed", e);
   }
 }
