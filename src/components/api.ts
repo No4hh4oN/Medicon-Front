@@ -32,7 +32,7 @@ export async function fetchStudies(
 
   let newRows: ResultRow[] = [];
 
-  if (searchType === "modality") {
+  if (searchType === "modality" || searchType === "pid") {
     const apiData: ApiModalityResponse[] = await response.json();
     newRows = apiData.map((study) => {
       const year = study.studyDate.substring(0, 4);
